@@ -19,28 +19,62 @@ import {
   History,
   User,
 } from "lucide-react";
-import { products, formatRupiah, Category, Product } from "./data";
-import { syncToGoogleSheets } from "./googleSheetsService";
+import { products, formatRupiah, Category, Product, initialCategories } from "./data";
+import { syncToGoogleSheets, fetchFromGoogleSheets } from "./googleSheetsService";
+
+function useLocalStorage<T>(key: string, initialValue: T) {
+  const [storedValue, setStoredValue] = useState<T>(() => {
+    try {
+      const item = window.localStorage.getItem(key);
+      return item ? JSON.parse(item) : initialValue;
+    } catch (error) {
+      console.warn(`Error reading localStorage key "${key}":`, error);
+      return initialValue;
+    }
+  });
+
+  const setValue = (value: T | ((val: T) => T)) => {
+    try {
+      // Allow value to be a function so we have same API as useState
+      const valueToStore =
+        value instanceof Function ? value(storedValue) : value;
+      // Save state
+      setStoredValue(valueToStore);
+      // Save to local storage
+      window.localStorage.setItem(key, JSON.stringify(valueToStore));
+    } catch (error) {
+      console.warn(`Error setting localStorage key "${key}":`, error);
+    }
+  };
+
+  return [storedValue, setValue] as const;
+}
 
 function ManagementMenu({
   productList,
   setProductList,
+  categories,
+  setCategories,
 }: {
   productList: Product[];
   setProductList: any;
+  categories: string[];
+  setCategories: any;
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [newCategory, setNewCategory] = useState("");
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [form, setForm] = useState<Partial<Product>>({
     name: "",
-    category: "Signature Dessert",
+    category: categories[0] || "",
     price: 0,
     cogs: 0,
   });
 
   const openAdd = () => {
     setEditingProduct(null);
-    setForm({ name: "", category: "Signature Dessert", price: 0, cogs: 0 });
+    setForm({ name: "", category: categories[0] || "", price: 0, cogs: 0 });
     setIsModalOpen(true);
   };
 
@@ -90,6 +124,12 @@ function ManagementMenu({
         >
           <Plus size={16} /> Add Product
         </button>
+        <button
+          onClick={() => setIsCategoryModalOpen(true)}
+          className="bg-white border hover:bg-stone-50 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors ml-2"
+        >
+           Manage Categories
+        </button>
       </div>
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
         <table className="w-full text-left border-collapse">
@@ -103,9 +143,9 @@ function ManagementMenu({
             </tr>
           </thead>
           <tbody>
-            {productList.map((p) => (
+            {productList.map((p, idx) => (
               <tr
-                key={p.id}
+                key={`${p.id}-${idx}`}
                 className="border-b border-stone-100 hover:bg-stone-50"
               >
                 <td className="py-4 text-sm font-bold text-stone-800">
@@ -167,10 +207,9 @@ function ManagementMenu({
                   }
                   className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-sm mt-1 outline-none focus:border-[#D81B60]"
                 >
-                  <option value="Signature Dessert">Signature Dessert</option>
-                  <option value="Kopi">Kopi</option>
-                  <option value="Non-Kopi">Non-Kopi</option>
-                  <option value="Add-ons">Add-ons</option>
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -217,6 +256,59 @@ function ManagementMenu({
           </div>
         </div>
       )}
+
+      {isCategoryModalOpen && (
+        <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 p-6 flex flex-col justify-center items-center">
+          <div className="bg-white border text-left border-stone-200 shadow-xl rounded-2xl w-full max-w-sm p-6">
+            <h3 className="text-lg font-bold text-stone-800 mb-4">Manage Categories</h3>
+            
+            <div className="flex gap-2 mb-4">
+              <input
+                type="text"
+                placeholder="New category name"
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                className="flex-1 bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#D81B60]"
+              />
+              <button
+                onClick={() => {
+                  if (newCategory.trim() && !categories.includes(newCategory.trim())) {
+                    setCategories([...categories, newCategory.trim()]);
+                    setNewCategory("");
+                  }
+                }}
+                className="bg-[#D81B60] text-white px-3 py-2 rounded-lg text-sm font-bold"
+              >
+                Add
+              </button>
+            </div>
+
+            <div className="space-y-2 mb-6 max-h-48 overflow-y-auto custom-scrollbar">
+              {categories.map((cat) => (
+                <div key={cat} className="flex justify-between items-center bg-stone-50 border border-stone-100 p-2 rounded-lg">
+                  <span className="text-sm font-semibold text-stone-700">{cat}</span>
+                  <button
+                    onClick={() => setCategories(categories.filter((c: string) => c !== cat))}
+                    className="text-stone-400 hover:text-red-500 transition-colors"
+                    title="Remove category"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                onClick={() => setIsCategoryModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-sm font-bold bg-[#D81B60] text-white hover:brightness-110"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -224,9 +316,11 @@ function ManagementMenu({
 function ManagementHistory({
   orderHistory,
   printReceipt,
+  setOrderHistory,
 }: {
   orderHistory: any[];
   printReceipt: (order?: any) => void;
+  setOrderHistory: any;
 }) {
   return (
     <div className="p-6 h-full flex flex-col">
@@ -254,13 +348,14 @@ function ManagementHistory({
                 <th className="pb-3 font-bold">Payment</th>
                 <th className="pb-3 font-bold text-right">Total Amount</th>
                 <th className="pb-3 font-bold text-center">Receipt</th>
+                <th className="pb-3 font-bold text-center">Action</th>
               </tr>
             </thead>
             <tbody>
-              {orderHistory.map((o) => (
+              {orderHistory.map((o, idx) => (
                 <tr
-                  key={o.orderId}
-                  className="border-b border-stone-100 hover:bg-stone-50 transition-colors"
+                  key={`${o.orderId}-${idx}`}
+                  className="border-b border-stone-100 hover:bg-stone-50 transition-colors group"
                 >
                   <td className="py-4 text-sm font-mono font-bold text-stone-800">
                     {o.orderId}
@@ -296,9 +391,25 @@ function ManagementHistory({
                         e.stopPropagation();
                         printReceipt(o);
                       }}
+                      title="Print Receipt"
                       className="p-2 text-stone-400 hover:text-[#D81B60] hover:bg-stone-50 rounded-lg transition-colors inline-block"
                     >
                       <Printer size={16} />
+                    </button>
+                  </td>
+                  <td className="py-4 text-center">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm(`Yakin ingin menghapus Order ${o.orderId}?`)) {
+                          setOrderHistory((prev: any[]) => prev.filter((x) => x.orderId !== o.orderId));
+                          syncToGoogleSheets("DELETE_ORDER", { orderId: o.orderId });
+                        }
+                      }}
+                      title="Hapus Order"
+                      className="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100 inline-block"
+                    >
+                      <Trash2 size={16} />
                     </button>
                   </td>
                 </tr>
@@ -475,9 +586,9 @@ function ManagementFinance({
           </p>
         ) : (
           <div className="space-y-2">
-            {filteredExpenses.map((e) => (
+            {filteredExpenses.map((e, idx) => (
               <div
-                key={e.id}
+                key={`${e.id}-${idx}`}
                 className="flex justify-between items-center bg-white p-3 rounded-xl border border-stone-100 shadow-sm"
               >
                 <div>
@@ -561,9 +672,9 @@ function ManagementPreOrder({
           <p className="text-stone-400 text-sm">Belum ada data pre-order.</p>
         ) : (
           <div className="space-y-3">
-            {preOrders.map((p) => (
+            {preOrders.map((p, idx) => (
               <div
-                key={p.id}
+                key={`${p.id}-${idx}`}
                 className="p-4 border border-stone-200 rounded-xl flex justify-between bg-stone-50"
               >
                 <div>
@@ -745,9 +856,9 @@ function ManagementExpense({
           </p>
         ) : (
           <div className="space-y-3">
-            {expenses.map((e) => (
+            {expenses.map((e, idx) => (
               <div
-                key={e.id}
+                key={`${e.id}-${idx}`}
                 className="flex justify-between items-center bg-white p-4 rounded-xl border border-stone-200 shadow-sm relative group overflow-hidden"
               >
                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-rose-500"></div>
@@ -859,13 +970,13 @@ function ManagementCOGS({ productList }: { productList: Product[] }) {
             </tr>
           </thead>
           <tbody>
-            {productList.map((p) => {
+            {productList.map((p, idx) => {
               const profit = p.price - p.cogs;
               const marginPct =
                 p.price > 0 ? ((profit / p.price) * 100).toFixed(1) : "0";
               return (
                 <tr
-                  key={p.id}
+                  key={`${p.id}-${idx}`}
                   className="border-b border-stone-100 hover:bg-stone-50"
                 >
                   <td className="py-4 text-sm font-bold text-stone-800">
@@ -1000,17 +1111,75 @@ type ManagementTab =
 export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>("POS");
   const [managementTab, setManagementTab] = useState<ManagementTab>("FINANCE");
-  const [productList, setProductList] = useState<Product[]>(products);
-  const [orderHistory, setOrderHistory] = useState<any[]>([]);
-  const [expenses, setExpenses] = useState<any[]>([]);
-  const [preOrders, setPreOrders] = useState<any[]>([]);
+  const [productList, setProductList] = useLocalStorage<Product[]>("legiy_products", products);
+  const [categories, setCategories] = useLocalStorage<string[]>("legiy_categories", initialCategories);
+  const [orderHistory, setOrderHistory] = useLocalStorage<any[]>("legiy_orders", []);
+  const [expenses, setExpenses] = useLocalStorage<any[]>("legiy_expenses", []);
+  const [preOrders, setPreOrders] = useLocalStorage<any[]>("legiy_preorders", []);
 
-  const [activeCategory, setActiveCategory] = useState<Category | "Semua">(
-    "Semua",
-  );
+  const [activeCategory, setActiveCategory] = useState<string>("Semua");
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [discount, setDiscount] = useState<number>(0);
   const [orderType, setOrderType] = useState<OrderType>("Dine-in");
   const [customerName, setCustomerName] = useState("");
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // Auto-sync from Google Sheets on mount and periodically
+  useEffect(() => {
+    let isMounted = true;
+    
+    const syncData = async () => {
+      setIsSyncing(true);
+      try {
+        const result = await fetchFromGoogleSheets();
+        if (result && result.status === 'success' && result.data && isMounted) {
+          const { PRODUCT, ORDER, EXPENSE, PRE_ORDER } = result.data;
+          
+          if (PRODUCT && PRODUCT.length > 0) {
+            const uniqueProducts = Array.from(new Map(PRODUCT.map((item: any) => [item.id, item])).values()) as Product[];
+            setProductList(uniqueProducts);
+            
+            // Extract unique categories from products just in case
+            const cats = Array.from(new Set(uniqueProducts.map((p: any) => p.category))).filter(Boolean) as string[];
+            if (cats.length > 0) {
+              setCategories(prev => {
+                const newCats = [...prev];
+                cats.forEach(c => {
+                  if (!newCats.includes(c)) newCats.push(c);
+                });
+                return newCats;
+              });
+            }
+          }
+          if (ORDER && ORDER.length > 0) {
+            const uniqueOrders = Array.from(new Map(ORDER.map((item: any) => [item.orderId, item])).values()) as any[];
+            setOrderHistory(uniqueOrders);
+          }
+          if (EXPENSE && EXPENSE.length > 0) {
+            const uniqueExpenses = Array.from(new Map(EXPENSE.map((item: any) => [item.id, item])).values()) as any[];
+            setExpenses(uniqueExpenses);
+          }
+          if (PRE_ORDER && PRE_ORDER.length > 0) {
+            const uniquePreOrders = Array.from(new Map(PRE_ORDER.map((item: any) => [item.id, item])).values()) as any[];
+            setPreOrders(uniquePreOrders);
+          }
+        }
+      } catch (error) {
+        console.error("Sync failed", error);
+      } finally {
+        if (isMounted) setIsSyncing(false);
+      }
+    };
+
+    syncData();
+    
+    // Auto sync every 30 seconds
+    const interval = setInterval(syncData, 30000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   // Checkout & Payment State
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
@@ -1075,15 +1244,18 @@ export default function App() {
     setCart((prev) => prev.filter((item) => item.id !== id));
   };
 
-  const clearCart = () => setCart([]);
+  const clearCart = () => {
+    setCart([]);
+    setDiscount(0);
+  };
 
   // Calculations
   const subtotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
     [cart],
   );
-  const tax = useMemo(() => subtotal * TAX_RATE, [subtotal]);
-  const total = useMemo(() => subtotal + tax, [subtotal, tax]);
+  const tax = useMemo(() => Math.max(0, subtotal - discount) * TAX_RATE, [subtotal, discount]);
+  const total = useMemo(() => Math.max(0, subtotal - discount) + tax, [subtotal, discount, tax]);
 
   const cashGiven = parseInt(cashAmount.replace(/\D/g, "")) || 0;
   const change = Math.max(0, cashGiven - total);
@@ -1116,6 +1288,7 @@ export default function App() {
       orderType,
       paymentMethod,
       subtotal,
+      discount,
       tax,
       total,
       cashGiven: paymentMethod === "Cash" ? cashGiven : total,
@@ -1240,6 +1413,7 @@ export default function App() {
         
         <div class="divider"></div>
         <div class="flex"><span>Subtotal</span><span>${orderToPrint.subtotal.toLocaleString("id-ID")}</span></div>
+        ${orderToPrint.discount ? `<div class="flex"><span>Diskon</span><span>-${orderToPrint.discount.toLocaleString("id-ID")}</span></div>` : ""}
         ${orderToPrint.tax > 0 ? `<div class="flex"><span>PB1</span><span>${orderToPrint.tax.toLocaleString("id-ID")}</span></div>` : ""}
         <div class="divider"></div>
         <div class="flex bold" style="font-size: 13px;"><span>TOTAL</span><span>${orderToPrint.total.toLocaleString("id-ID")}</span></div>
@@ -1314,6 +1488,12 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-6">
+          {isSyncing && (
+            <div className="hidden sm:flex items-center gap-2 text-xs text-stone-500 bg-stone-100 px-3 py-1.5 rounded-full">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+              Syncing...
+            </div>
+          )}
           <div className="text-right hidden sm:block">
             <p className="text-sm font-semibold">Legiy System</p>
             <p className="text-[10px] text-stone-400 uppercase font-black tracking-widest">
@@ -1328,10 +1508,7 @@ export default function App() {
           {/* Category Navigation (Left) */}
           <nav className="w-24 flex flex-col gap-3 overflow-y-auto shrink-0 print:hidden hidden sm:flex pb-4 custom-scrollbar">
             {(
-              ["Semua", "Signature Dessert", "Kopi", "Non-Kopi", "Add-ons"] as (
-                | Category
-                | "Semua"
-              )[]
+              ["Semua", ...categories]
             ).map((cat) => (
               <button
                 key={cat}
@@ -1363,13 +1540,7 @@ export default function App() {
             <div className="col-span-full sm:hidden mb-2">
               <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
                 {(
-                  [
-                    "Semua",
-                    "Signature Dessert",
-                    "Kopi",
-                    "Non-Kopi",
-                    "Add-ons",
-                  ] as (Category | "Semua")[]
+                  ["Semua", ...categories]
                 ).map((cat) => (
                   <button
                     key={cat}
@@ -1387,9 +1558,9 @@ export default function App() {
               </div>
             </div>
 
-            {filteredProducts.map((product) => (
+            {filteredProducts.map((product, idx) => (
               <div
-                key={product.id}
+                key={`${product.id}-${idx}`}
                 onClick={() => addToCart(product)}
                 className={`bg-white rounded-2xl p-3 shadow-sm border flex flex-col cursor-pointer transition-all active:scale-95 group select-none hover:shadow-md
                 ${cart.find((c) => c.id === product.id) ? "border-[#D81B60] ring-2 ring-[#D81B60] ring-offset-2" : "border-stone-100 hover:border-[#D81B60]"}`}
@@ -1533,6 +1704,19 @@ export default function App() {
                     {formatRupiah(subtotal)}
                   </span>
                 </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-stone-500 font-medium">Diskon</span>
+                  <div className="relative w-24">
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-stone-400 text-[10px]">Rp</span>
+                    <input 
+                      type="number" 
+                      value={discount || ""}
+                      onChange={(e) => setDiscount(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-full pl-6 pr-2 py-1 text-right bg-white border border-stone-200 rounded text-xs text-stone-700 font-bold focus:outline-none focus:border-[#D81B60] transition-colors hide-arrows"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
                 {TAX_RATE > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-stone-500 font-medium">
@@ -1606,12 +1790,15 @@ export default function App() {
                 <ManagementMenu
                   productList={productList}
                   setProductList={setProductList}
+                  categories={categories}
+                  setCategories={setCategories}
                 />
               )}
               {managementTab === "HISTORY" && (
                 <ManagementHistory 
                   orderHistory={orderHistory} 
                   printReceipt={printReceipt} 
+                  setOrderHistory={setOrderHistory}
                 />
               )}
               {managementTab === "FINANCE" && (
@@ -1947,6 +2134,14 @@ export default function App() {
                     {formatRupiah(lastOrderDetails.subtotal)}
                   </span>
                 </div>
+                {lastOrderDetails.discount > 0 && (
+                  <div className="flex justify-between text-[#D81B60]">
+                    <span>Diskon</span>
+                    <span className="font-mono">
+                      -{formatRupiah(lastOrderDetails.discount)}
+                    </span>
+                  </div>
+                )}
                 {lastOrderDetails.tax > 0 && (
                   <div className="flex justify-between text-stone-500">
                     <span>PB1</span>

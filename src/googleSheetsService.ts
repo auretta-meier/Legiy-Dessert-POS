@@ -34,3 +34,24 @@ export const syncToGoogleSheets = async (type: string, data: any) => {
     return { success: false };
   }
 }
+
+export const fetchFromGoogleSheets = async () => {
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxkjzZ4qKRd83IFr3qK_rv3r5UlxQKjGUWe3SX-kSKzxwicv8G_mDxj_vQxufynKWSo/exec'; 
+
+  try {
+    const response = await fetch(SCRIPT_URL, {
+      method: 'GET',
+      redirect: 'follow', // Required to handle Google Apps Script 302 redirects
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    // Only log the error if we really need to, otherwise silently fail to avoid console spam 
+    // when adblockers or browser privacy settings block google apps script
+    console.warn('Sync warning: Could not fetch from Google Sheets (might be blocked by browser/adblocker). Relying on local storage.');
+    return null;
+  }
+}

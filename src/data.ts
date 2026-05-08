@@ -1,4 +1,4 @@
-export type Category = 'Signature Dessert' | 'Kopi' | 'Non-Kopi' | 'Add-ons';
+export type Category = string;
 
 export interface Product {
   id: string;
@@ -8,6 +8,8 @@ export interface Product {
   category: Category;
   imageColor: string; // Used for a placeholder color
 }
+
+export const initialCategories: string[] = ['Signature Dessert', 'Kopi', 'Non-Kopi', 'Add-ons'];
 
 export const products: Product[] = [
   // Signature Dessert

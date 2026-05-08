@@ -123,6 +123,53 @@ function doPost(e) {
     return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message })).setMimeType(ContentService.MimeType.JSON);
   }
 }
+
+function doGet(e) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheets = ss.getSheets();
+    var result = {};
+
+    // Ambil data untuk spesifik sheet jika diminta, jika tidak semua
+    var requestedSheet = e.parameter.type;
+    
+    for (var s = 0; s < sheets.length; s++) {
+      var sheet = sheets[s];
+      var sheetName = sheet.getName();
+      
+      if (requestedSheet && sheetName !== requestedSheet) continue;
+
+      if (sheet.getLastRow() > 1) {
+        var dataRange = sheet.getDataRange().getValues();
+        var headers = dataRange[0];
+        var data = [];
+
+        for (var i = 1; i < dataRange.length; i++) {
+          var row = dataRange[i];
+          var obj = {};
+          for (var j = 0; j < headers.length; j++) {
+            var value = row[j];
+            // Coba parse json apabial string
+            if (typeof value === 'string' && (value.startsWith('{') || value.startsWith('['))) {
+              try {
+                value = JSON.parse(value);
+              } catch (err) {}
+            }
+            obj[headers[j]] = value;
+          }
+          data.push(obj);
+        }
+        result[sheetName] = data;
+      } else {
+        result[sheetName] = [];
+      }
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({ status: 'success', data: result })).setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
 ```
 
 ## 4. Deploy sebagai Web App

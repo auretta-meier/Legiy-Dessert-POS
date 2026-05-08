@@ -59,20 +59,25 @@ function ManagementMenu({
     )
       return;
     if (editingProduct) {
+      const updatedProduct = { ...editingProduct, ...form };
       setProductList((prev: Product[]) =>
-        prev.map((p) => (p.id === editingProduct.id ? { ...p, ...form } : p)),
+        prev.map((p) => (p.id === editingProduct.id ? updatedProduct : p)),
       );
+      syncToGoogleSheets("PRODUCT", updatedProduct);
     } else {
+      const newProduct = { ...form, id: Math.random().toString() } as Product;
       setProductList((prev: Product[]) => [
-        { ...form, id: Math.random().toString() } as Product,
+        newProduct,
         ...prev,
       ]);
+      syncToGoogleSheets("PRODUCT", newProduct);
     }
     setIsModalOpen(false);
   };
 
   const deleteProduct = (id: string) => {
     setProductList((prev: Product[]) => prev.filter((x) => x.id !== id));
+    syncToGoogleSheets("DELETE_PRODUCT", { id });
   };
 
   return (
@@ -524,17 +529,19 @@ function ManagementPreOrder({
 
   const savePreOrder = () => {
     if (!form.customer || !form.orderDetails) return;
+    const newPreOrder = {
+      id: Math.random().toString(),
+      customer: form.customer,
+      orderDetails: form.orderDetails,
+      paymentStatus: form.paymentStatus || "Belum Bayar",
+      fetchDate: form.fetchDate || new Date().toLocaleDateString("id-ID"),
+      timestamp: new Date().toISOString(),
+    };
     setPreOrders((prev: any[]) => [
-      {
-        id: Math.random().toString(),
-        customer: form.customer,
-        orderDetails: form.orderDetails,
-        paymentStatus: form.paymentStatus || "Belum Bayar",
-        fetchDate: form.fetchDate || new Date().toLocaleDateString("id-ID"),
-        timestamp: new Date().toISOString(),
-      },
+      newPreOrder,
       ...prev,
     ]);
+    syncToGoogleSheets("PRE_ORDER", newPreOrder);
     setIsModalOpen(false);
   };
 
@@ -583,10 +590,12 @@ function ManagementPreOrder({
                     {p.paymentStatus}
                   </p>
                   <button
-                    onClick={() =>
-                      setPreOrders((prev: any[]) =>
-                        prev.filter((x) => x.id !== p.id),
-                      )
+                    onClick={() => {
+                        setPreOrders((prev: any[]) =>
+                          prev.filter((x) => x.id !== p.id),
+                        );
+                        syncToGoogleSheets("DELETE_PRE_ORDER", { id: p.id });
+                      }
                     }
                     className="text-stone-400 hover:text-red-500 mt-2"
                   >
@@ -703,15 +712,17 @@ function ManagementExpense({
     if (!form.desc || !form.amount) return;
     const amt = parseInt(form.amount.replace(/\D/g, ""));
     if (!isNaN(amt) && amt > 0) {
+      const newExpense = {
+        id: Math.random().toString(),
+        desc: form.desc,
+        amount: amt,
+        timestamp: new Date().toISOString(),
+      };
       setExpenses((prev: any[]) => [
-        {
-          id: Math.random().toString(),
-          desc: form.desc,
-          amount: amt,
-          timestamp: new Date().toISOString(),
-        },
+        newExpense,
         ...prev,
       ]);
+      syncToGoogleSheets("EXPENSE", newExpense);
     }
     setIsModalOpen(false);
   };
@@ -755,11 +766,10 @@ function ManagementExpense({
                     -{formatRupiah(e.amount)}
                   </p>
                   <button
-                    onClick={() =>
-                      setExpenses((prev: any[]) =>
-                        prev.filter((x) => x.id !== e.id),
-                      )
-                    }
+                    onClick={() => {
+                      setExpenses((prev: any[]) => prev.filter((x) => x.id !== e.id));
+                      syncToGoogleSheets("DELETE_EXPENSE", { id: e.id });
+                    }}
                     className="text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <Trash2 size={16} />
@@ -1113,7 +1123,7 @@ export default function App() {
     };
 
     // Sync to Google Sheets
-    await syncToGoogleSheets(orderData);
+    await syncToGoogleSheets("ORDER", orderData);
 
     const fullOrderDetails = { ...orderData, cartSnapshot: [...cart] };
     setLastOrderDetails(fullOrderDetails);

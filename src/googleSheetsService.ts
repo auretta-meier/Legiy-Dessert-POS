@@ -1,33 +1,34 @@
-export const syncToGoogleSheets = async (orderData: any) => {
+export const syncToGoogleSheets = async (type: string, data: any) => {
   // In a real application, replace this URL with your Google Apps Script Web App URL
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxdtPQ4Gex0pgz8QD7lbBNy4poml_-ThM4CB0fYU6nGiV45UwxWD8eLhSWK4iuPfsbIsQ/exec'; 
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxkjzZ4qKRd83IFr3qK_rv3r5UlxQKjGUWe3SX-kSKzxwicv8G_mDxj_vQxufynKWSo/exec'; 
 
-  console.log('Sending transaction to Google Sheets:', orderData);
+  console.log(`Sending ${type} to Google Sheets:`, data);
+  
+  let action = "UPSERT";
+  let targetSheet = type;
+  
+  if (type.startsWith("DELETE_")) {
+    action = "DELETE";
+    targetSheet = type.replace("DELETE_", "");
+  }
 
   try {
-    // We simulate a network request here since this is a frontend-only demo
-    const isDevelopment = true; 
-    
-    if (isDevelopment) {
-      return new Promise<{success: boolean}>((resolve) => {
-        setTimeout(() => {
-          console.log('Successfully recorded to mockup Google Sheets!');
-          resolve({ success: true });
-        }, 1000);
-      });
-    }
+    const payload = {
+      type: targetSheet,
+      action,
+      data
+    };
 
-    /* REAL IMPLEMENTATION (Uncomment and set SCRIPT_URL above):
     const response = await fetch(SCRIPT_URL, {
       method: 'POST',
-      mode: 'no-cors', // Important to avoid CORS issues with simple Apps Script
+      mode: 'no-cors', // Important to avoid CORS issues
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'text/plain', // Using text/plain handles no-cors simply
       },
-      body: JSON.stringify(orderData)
+      body: JSON.stringify(payload)
     });
+    
     return { success: true };
-    */
   } catch (error) {
     console.error('Error syncing to Google Sheets', error);
     return { success: false };

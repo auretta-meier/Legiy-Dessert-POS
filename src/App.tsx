@@ -35,12 +35,16 @@ function useLocalStorage<T>(key: string, initialValue: T) {
 
   const setValue = (value: T | ((val: T) => T)) => {
     try {
-      // Allow value to be a function so we have same API as useState
+      let currentVal = storedValue;
+      const raw = window.localStorage.getItem(key);
+      if (raw !== null) {
+        try {
+          currentVal = JSON.parse(raw);
+        } catch (_) {}
+      }
       const valueToStore =
-        value instanceof Function ? value(storedValue) : value;
-      // Save state
+        value instanceof Function ? value(currentVal) : value;
       setStoredValue(valueToStore);
-      // Save to local storage
       window.localStorage.setItem(key, JSON.stringify(valueToStore));
     } catch (error) {
       console.warn(`Error setting localStorage key "${key}":`, error);
@@ -55,11 +59,13 @@ function ManagementMenu({
   setProductList,
   categories,
   setCategories,
+  queueSync,
 }: {
   productList: Product[];
   setProductList: any;
   categories: string[];
   setCategories: any;
+  queueSync: any;
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -97,21 +103,21 @@ function ManagementMenu({
       setProductList((prev: Product[]) =>
         prev.map((p) => (p.id === editingProduct.id ? updatedProduct : p)),
       );
-      syncToGoogleSheets("PRODUCT", updatedProduct);
+      queueSync("PRODUCT", "UPSERT", updatedProduct);
     } else {
       const newProduct = { ...form, id: Math.random().toString() } as Product;
       setProductList((prev: Product[]) => [
         newProduct,
         ...prev,
       ]);
-      syncToGoogleSheets("PRODUCT", newProduct);
+      queueSync("PRODUCT", "UPSERT", newProduct);
     }
     setIsModalOpen(false);
   };
 
   const deleteProduct = (id: string) => {
     setProductList((prev: Product[]) => prev.filter((x) => x.id !== id));
-    syncToGoogleSheets("DELETE_PRODUCT", { id });
+    queueSync("PRODUCT", "DELETE", { id });
   };
 
   return (
@@ -272,8 +278,10 @@ function ManagementMenu({
               />
               <button
                 onClick={() => {
-                  if (newCategory.trim() && !categories.includes(newCategory.trim())) {
-                    setCategories([...categories, newCategory.trim()]);
+                  const trimmed = newCategory.trim();
+                  if (trimmed && !categories.includes(trimmed)) {
+                    setCategories([...categories, trimmed]);
+                    queueSync("CATEGORY", "UPSERT", { id: trimmed, name: trimmed });
                     setNewCategory("");
                   }
                 }}
@@ -288,7 +296,10 @@ function ManagementMenu({
                 <div key={cat} className="flex justify-between items-center bg-stone-50 border border-stone-100 p-2 rounded-lg">
                   <span className="text-sm font-semibold text-stone-700">{cat}</span>
                   <button
-                    onClick={() => setCategories(categories.filter((c: string) => c !== cat))}
+                    onClick={() => {
+                      setCategories(categories.filter((c: string) => c !== cat));
+                      queueSync("CATEGORY", "DELETE", { id: cat, name: cat });
+                    }}
                     className="text-stone-400 hover:text-red-500 transition-colors"
                     title="Remove category"
                   >
@@ -317,10 +328,12 @@ function ManagementHistory({
   orderHistory,
   printReceipt,
   setOrderHistory,
+  queueSync,
 }: {
   orderHistory: any[];
   printReceipt: (order?: any) => void;
   setOrderHistory: any;
+  queueSync: any;
 }) {
   return (
     <div className="p-6 h-full flex flex-col">
@@ -403,7 +416,7 @@ function ManagementHistory({
                         e.stopPropagation();
                         if (confirm(`Yakin ingin menghapus Order ${o.orderId}?`)) {
                           setOrderHistory((prev: any[]) => prev.filter((x) => x.orderId !== o.orderId));
-                          syncToGoogleSheets("DELETE_ORDER", { orderId: o.orderId });
+                          queueSync("ORDER", "DELETE", { orderId: o.orderId });
                         }
                       }}
                       title="Hapus Order"
@@ -616,9 +629,11 @@ function ManagementFinance({
 function ManagementPreOrder({
   preOrders,
   setPreOrders,
+  queueSync,
 }: {
   preOrders: any[];
   setPreOrders: any;
+  queueSync: any;
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form, setForm] = useState({
@@ -652,7 +667,7 @@ function ManagementPreOrder({
       newPreOrder,
       ...prev,
     ]);
-    syncToGoogleSheets("PRE_ORDER", newPreOrder);
+    queueSync("PRE_ORDER", "UPSERT", newPreOrder);
     setIsModalOpen(false);
   };
 
@@ -705,7 +720,7 @@ function ManagementPreOrder({
                         setPreOrders((prev: any[]) =>
                           prev.filter((x) => x.id !== p.id),
                         );
-                        syncToGoogleSheets("DELETE_PRE_ORDER", { id: p.id });
+                        queueSync("PRE_ORDER", "DELETE", { id: p.id });
                       }
                     }
                     className="text-stone-400 hover:text-red-500 mt-2"
@@ -807,9 +822,11 @@ function ManagementPreOrder({
 function ManagementExpense({
   expenses,
   setExpenses,
+  queueSync,
 }: {
   expenses: any[];
   setExpenses: any;
+  queueSync: any;
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form, setForm] = useState({ desc: "", amount: "" });
@@ -833,7 +850,7 @@ function ManagementExpense({
         newExpense,
         ...prev,
       ]);
-      syncToGoogleSheets("EXPENSE", newExpense);
+      queueSync("EXPENSE", "UPSERT", newExpense);
     }
     setIsModalOpen(false);
   };
@@ -879,7 +896,7 @@ function ManagementExpense({
                   <button
                     onClick={() => {
                       setExpenses((prev: any[]) => prev.filter((x) => x.id !== e.id));
-                      syncToGoogleSheets("DELETE_EXPENSE", { id: e.id });
+                      queueSync("EXPENSE", "DELETE", { id: e.id });
                     }}
                     className="text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
@@ -1108,6 +1125,13 @@ type ManagementTab =
   | "COGS"
   | "PERFORMANCE";
 
+interface SyncOperation {
+  id: string;
+  type: "PRODUCT" | "ORDER" | "EXPENSE" | "PRE_ORDER" | "CATEGORY";
+  action: "UPSERT" | "DELETE";
+  data: any;
+}
+
 export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>("POS");
   const [managementTab, setManagementTab] = useState<ManagementTab>("FINANCE");
@@ -1124,7 +1148,102 @@ export default function App() {
   const [customerName, setCustomerName] = useState("");
   const [isSyncing, setIsSyncing] = useState(false);
 
-  // Auto-sync from Google Sheets on mount and periodically
+  const [syncQueue, setSyncQueue] = useLocalStorage<SyncOperation[]>("legiy_sync_queue", []);
+
+  const syncQueueRef = React.useRef(syncQueue);
+  useEffect(() => {
+    syncQueueRef.current = syncQueue;
+  }, [syncQueue]);
+
+  const queueSync = (
+    type: "PRODUCT" | "ORDER" | "EXPENSE" | "PRE_ORDER" | "CATEGORY",
+    action: "UPSERT" | "DELETE",
+    data: any
+  ) => {
+    const opId = Math.random().toString(36).substring(2, 9);
+    const newOp: SyncOperation = { id: opId, type, action, data };
+    setSyncQueue((prev) => [...prev, newOp]);
+  };
+
+  const applyPendingSync = <T extends { id?: any; orderId?: any }>(
+    type: "PRODUCT" | "ORDER" | "EXPENSE" | "PRE_ORDER" | "CATEGORY",
+    fetchedList: T[]
+  ): T[] => {
+    const pendingOps = syncQueueRef.current.filter((op) => op.type === type);
+    let merged = [...fetchedList];
+    
+    pendingOps.forEach((op) => {
+      const primaryKey = op.data.id || op.data.orderId;
+      if (op.action === "DELETE") {
+        merged = merged.filter((item) => {
+          const itemId = item.id || item.orderId;
+          return String(itemId) !== String(primaryKey);
+        });
+      } else if (op.action === "UPSERT") {
+        const index = merged.findIndex((item) => {
+          const itemId = item.id || item.orderId;
+          return String(itemId) !== "" && String(itemId) === String(primaryKey);
+        });
+        if (index > -1) {
+          merged[index] = { ...merged[index], ...op.data };
+        } else {
+          merged.unshift(op.data);
+        }
+      }
+    });
+    
+    return merged;
+  };
+
+  const applyPendingCategories = (fetchedCats: string[]): string[] => {
+    const pendingOps = syncQueueRef.current.filter((op) => op.type === "CATEGORY");
+    let merged = [...fetchedCats];
+    
+    pendingOps.forEach((op) => {
+      const catName = op.data.name;
+      if (op.action === "DELETE") {
+        merged = merged.filter((c) => c !== catName);
+      } else if (op.action === "UPSERT") {
+        if (!merged.includes(catName)) {
+          merged.push(catName);
+        }
+      }
+    });
+    
+    return merged;
+  };
+
+  // Sequential queue sync backend worker
+  useEffect(() => {
+    if (syncQueue.length === 0) return;
+    
+    let isStopped = false;
+    
+    const processQueue = async () => {
+      const op = syncQueue[0];
+      const targetType = op.action === "DELETE" ? `DELETE_${op.type}` : op.type;
+      
+      setIsSyncing(true);
+      try {
+        const res = await syncToGoogleSheets(targetType, op.data);
+        if (res && res.success && !isStopped) {
+          setSyncQueue((prev) => prev.filter((item) => item.id !== op.id));
+        }
+      } catch (error) {
+        console.error("Queue sync error, will retry in next cycle:", error);
+      } finally {
+        if (!isStopped) setIsSyncing(false);
+      }
+    };
+    
+    const timeout = setTimeout(processQueue, 1500);
+    return () => {
+      isStopped = true;
+      clearTimeout(timeout);
+    };
+  }, [syncQueue]);
+
+  // Periodic download/merge from Google Sheets
   useEffect(() => {
     let isMounted = true;
     
@@ -1133,39 +1252,50 @@ export default function App() {
       try {
         const result = await fetchFromGoogleSheets();
         if (result && result.status === 'success' && result.data && isMounted) {
-          const { PRODUCT, ORDER, EXPENSE, PRE_ORDER } = result.data;
+          const { PRODUCT, ORDER, EXPENSE, PRE_ORDER, CATEGORY } = result.data;
           
-          if (PRODUCT && PRODUCT.length > 0) {
-            const uniqueProducts = Array.from(new Map(PRODUCT.map((item: any) => [item.id, item])).values()) as Product[];
-            setProductList(uniqueProducts);
-            
-            // Extract unique categories from products just in case
-            const cats = Array.from(new Set(uniqueProducts.map((p: any) => p.category))).filter(Boolean) as string[];
-            if (cats.length > 0) {
-              setCategories(prev => {
-                const newCats = [...prev];
-                cats.forEach(c => {
-                  if (!newCats.includes(c)) newCats.push(c);
-                });
-                return newCats;
-              });
-            }
-          }
-          if (ORDER && ORDER.length > 0) {
-            const uniqueOrders = Array.from(new Map(ORDER.map((item: any) => [item.orderId, item])).values()) as any[];
-            setOrderHistory(uniqueOrders);
-          }
-          if (EXPENSE && EXPENSE.length > 0) {
-            const uniqueExpenses = Array.from(new Map(EXPENSE.map((item: any) => [item.id, item])).values()) as any[];
-            setExpenses(uniqueExpenses);
-          }
-          if (PRE_ORDER && PRE_ORDER.length > 0) {
-            const uniquePreOrders = Array.from(new Map(PRE_ORDER.map((item: any) => [item.id, item])).values()) as any[];
-            setPreOrders(uniquePreOrders);
-          }
+          // 1. PRODUCTS
+          const baseProducts = PRODUCT && PRODUCT.length > 0 
+            ? (Array.from(new Map(PRODUCT.map((item: any) => [item.id, item])).values()) as Product[])
+            : [];
+          const mergedProducts = applyPendingSync("PRODUCT", baseProducts);
+          setProductList(mergedProducts);
+          
+          // 2. CATEGORIES (Use CATEGORY sheet with fallback to initial + products)
+          const baseCats = CATEGORY && CATEGORY.length > 0
+            ? (CATEGORY.map((c: any) => c.name).filter(Boolean) as string[])
+            : [];
+          const fallbackCats = Array.from(new Set([
+            ...initialCategories,
+            ...mergedProducts.map((p) => p.category)
+          ])).filter(Boolean) as string[];
+          const fetchedCats = baseCats.length > 0 ? baseCats : fallbackCats;
+          const mergedCats = applyPendingCategories(fetchedCats);
+          setCategories(mergedCats);
+          
+          // 3. ORDERS
+          const baseOrders = ORDER && ORDER.length > 0
+            ? (Array.from(new Map(ORDER.map((item: any) => [item.orderId, item])).values()) as any[])
+            : [];
+          const mergedOrders = applyPendingSync("ORDER", baseOrders);
+          setOrderHistory(mergedOrders);
+          
+          // 4. EXPENSES
+          const baseExpenses = EXPENSE && EXPENSE.length > 0
+            ? (Array.from(new Map(EXPENSE.map((item: any) => [item.id, item])).values()) as any[])
+            : [];
+          const mergedExpenses = applyPendingSync("EXPENSE", baseExpenses);
+          setExpenses(mergedExpenses);
+          
+          // 5. PRE-ORDERS
+          const basePreOrders = PRE_ORDER && PRE_ORDER.length > 0
+            ? (Array.from(new Map(PRE_ORDER.map((item: any) => [item.id, item])).values()) as any[])
+            : [];
+          const mergedPreOrders = applyPendingSync("PRE_ORDER", basePreOrders);
+          setPreOrders(mergedPreOrders);
         }
       } catch (error) {
-        console.error("Sync failed", error);
+        console.error("Fetch/merge from Google Sheets failed", error);
       } finally {
         if (isMounted) setIsSyncing(false);
       }
@@ -1173,7 +1303,6 @@ export default function App() {
 
     syncData();
     
-    // Auto sync every 30 seconds
     const interval = setInterval(syncData, 30000);
     return () => {
       isMounted = false;
@@ -1296,7 +1425,7 @@ export default function App() {
     };
 
     // Sync to Google Sheets
-    await syncToGoogleSheets("ORDER", orderData);
+    queueSync("ORDER", "UPSERT", orderData);
 
     const fullOrderDetails = { ...orderData, cartSnapshot: [...cart] };
     setLastOrderDetails(fullOrderDetails);
@@ -1792,6 +1921,7 @@ export default function App() {
                   setProductList={setProductList}
                   categories={categories}
                   setCategories={setCategories}
+                  queueSync={queueSync}
                 />
               )}
               {managementTab === "HISTORY" && (
@@ -1799,6 +1929,7 @@ export default function App() {
                   orderHistory={orderHistory} 
                   printReceipt={printReceipt} 
                   setOrderHistory={setOrderHistory}
+                  queueSync={queueSync}
                 />
               )}
               {managementTab === "FINANCE" && (
@@ -1812,12 +1943,14 @@ export default function App() {
                 <ManagementPreOrder
                   preOrders={preOrders}
                   setPreOrders={setPreOrders}
+                  queueSync={queueSync}
                 />
               )}
               {managementTab === "EXPENSE" && (
                 <ManagementExpense
                   expenses={expenses}
                   setExpenses={setExpenses}
+                  queueSync={queueSync}
                 />
               )}
               {managementTab === "COGS" && (

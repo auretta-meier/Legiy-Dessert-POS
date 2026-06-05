@@ -496,13 +496,13 @@ function ManagementFinance({
 
   const totalRevenue = filteredOrders.reduce((acc, o) => acc + o.total, 0);
   const totalCOGS = filteredOrders.reduce((acc, o) => {
-    return (
-      acc +
-      o.cartSnapshot.reduce(
-        (cAcc: number, item: any) => cAcc + item.cogs * item.quantity,
-        0,
-      )
-    );
+    const cogs = o.cartSnapshot
+      ? o.cartSnapshot.reduce(
+          (cAcc: number, item: any) => cAcc + (item.cogs || 0) * item.quantity,
+          0,
+        )
+      : 0;
+    return acc + cogs;
   }, 0);
   const totalExpense = filteredExpenses.reduce((acc, e) => acc + e.amount, 0);
 
@@ -1024,9 +1024,23 @@ function ManagementCOGS({ productList }: { productList: Product[] }) {
 function ManagementPerformance({ orderHistory }: { orderHistory: any[] }) {
   const itemCounts = orderHistory.reduce(
     (acc, order) => {
-      order.cartSnapshot.forEach((item: any) => {
-        acc[item.name] = (acc[item.name] || 0) + item.quantity;
-      });
+      if (order.cartSnapshot) {
+        order.cartSnapshot.forEach((item: any) => {
+          acc[item.name] = (acc[item.name] || 0) + item.quantity;
+        });
+      } else if (order.items) {
+        // parse the items string fallback if cartSnapshot is missing
+        // format: "2x Item Name (Rp 20.000)\n1x ..."
+        const lines = typeof order.items === 'string' ? order.items.split('\n') : [];
+        lines.forEach((line: string) => {
+          const match = line.match(/^(\d+)x\s+(.+)\s+\(Rp.*$/);
+          if (match) {
+            const qty = parseInt(match[1]);
+            const name = match[2];
+            acc[name] = (acc[name] || 0) + qty;
+          }
+        });
+      }
       return acc;
     },
     {} as Record<string, number>,
@@ -1104,6 +1118,87 @@ export interface CartItem extends Product {
   quantity: number;
 }
 
+function ManagementSettings({
+  receiptSettings,
+  setReceiptSettings,
+}: {
+  receiptSettings: any;
+  setReceiptSettings: any;
+}) {
+  return (
+    <div className="p-6 h-full flex flex-col">
+      <div className="flex items-center mb-6">
+        <h3 className="text-lg font-bold text-stone-800">
+          Pengaturan Struk (Receipt)
+        </h3>
+      </div>
+      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 max-w-xl">
+        <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 shadow-sm flex flex-col gap-4">
+          <div>
+            <label className="block text-xs font-bold text-stone-500 mb-1">
+              Nama Toko / Store Name
+            </label>
+            <input
+              type="text"
+              value={receiptSettings.storeName}
+              onChange={(e) =>
+                setReceiptSettings({ ...receiptSettings, storeName: e.target.value })
+              }
+              className="w-full text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#D81B60]"
+              placeholder="Misal: LEGIY DESSERT & COFFEE"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-stone-500 mb-1">
+              Alamat Toko
+            </label>
+            <textarea
+              value={receiptSettings.storeAddress}
+              onChange={(e) =>
+                setReceiptSettings({ ...receiptSettings, storeAddress: e.target.value })
+              }
+              rows={2}
+              className="w-full text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#D81B60]"
+              placeholder="Alamat toko yang akan dicetak di struk"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-stone-500 mb-1">
+              Footer / Pesan Terima Kasih (Baris 1)
+            </label>
+            <input
+              type="text"
+              value={receiptSettings.footerText1}
+              onChange={(e) =>
+                setReceiptSettings({ ...receiptSettings, footerText1: e.target.value })
+              }
+              className="w-full text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#D81B60]"
+              placeholder="Misal: Suka dessert-nya?"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-stone-500 mb-1">
+              Footer / Pesan Terima Kasih (Baris 2)
+            </label>
+            <input
+              type="text"
+              value={receiptSettings.footerText2}
+              onChange={(e) =>
+                setReceiptSettings({ ...receiptSettings, footerText2: e.target.value })
+              }
+              className="w-full text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#D81B60]"
+              placeholder="Misal: Yuk, tag Instagram kami di @legiy.dessert"
+            />
+          </div>
+          <div className="mt-4 bg-blue-50 text-blue-800 p-3 rounded-xl text-xs font-medium border border-blue-100">
+            Perubahan otomatis tersimpan dan akan langsung digunakan pada pencetakan struk berikutnya.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export type OrderType = "Dine-in" | "Takeaway";
 export type PaymentMethod =
   | "Cash"
@@ -1123,7 +1218,8 @@ type ManagementTab =
   | "PRE_ORDER"
   | "EXPENSE"
   | "COGS"
-  | "PERFORMANCE";
+  | "PERFORMANCE"
+  | "SETTINGS";
 
 interface SyncOperation {
   id: string;
@@ -1146,9 +1242,27 @@ export default function App() {
   const [discount, setDiscount] = useState<number>(0);
   const [orderType, setOrderType] = useState<OrderType>("Dine-in");
   const [customerName, setCustomerName] = useState("");
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
 
   const [syncQueue, setSyncQueue] = useLocalStorage<SyncOperation[]>("legiy_sync_queue", []);
+  
+  const [receiptSettings, setReceiptSettings] = useLocalStorage("legiy_receipt_settings", {
+    storeName: "LEGIY DESSERT & COFFEE",
+    storeAddress: "Puri Indah Mall, Jakarta Barat",
+    footerText1: "Manisnya pas, kayak senyum kamu hari ini :)",
+    footerText2: "Yuk, tag Instagram kami di @legiy.dessert"
+  });
+
+  const [receiptToPrint, setReceiptToPrint] = useState<any>(null);
+
+  useEffect(() => {
+    if (receiptToPrint) {
+      setTimeout(() => {
+        window.print();
+        setReceiptToPrint(null);
+      }, 500);
+    }
+  }, [receiptToPrint]);
 
   const syncQueueRef = React.useRef(syncQueue);
   useEffect(() => {
@@ -1223,7 +1337,7 @@ export default function App() {
       const op = syncQueue[0];
       const targetType = op.action === "DELETE" ? `DELETE_${op.type}` : op.type;
       
-      setIsSyncing(true);
+      setSyncStatus(`Syncing ${op.type.replace('_', ' ')}...`);
       try {
         const res = await syncToGoogleSheets(targetType, op.data);
         if (res && res.success && !isStopped) {
@@ -1232,7 +1346,7 @@ export default function App() {
       } catch (error) {
         console.error("Queue sync error, will retry in next cycle:", error);
       } finally {
-        if (!isStopped) setIsSyncing(false);
+        if (!isStopped) setSyncStatus(null);
       }
     };
     
@@ -1248,7 +1362,7 @@ export default function App() {
     let isMounted = true;
     
     const syncData = async () => {
-      setIsSyncing(true);
+      setSyncStatus("Fetching updates...");
       try {
         const result = await fetchFromGoogleSheets();
         if (result && result.status === 'success' && result.data && isMounted) {
@@ -1297,7 +1411,7 @@ export default function App() {
       } catch (error) {
         console.error("Fetch/merge from Google Sheets failed", error);
       } finally {
-        if (isMounted) setIsSyncing(false);
+        if (isMounted) setSyncStatus(null);
       }
     };
 
@@ -1326,14 +1440,6 @@ export default function App() {
     activeCategory === "Semua"
       ? productList
       : productList.filter((p) => p.category === activeCategory);
-
-  const getCategoryIcon = (cat: string) => {
-    if (cat === "Signature Dessert") return "🍰";
-    if (cat === "Kopi") return "☕";
-    if (cat === "Non-Kopi") return "🍵";
-    if (cat === "Add-ons") return "✨";
-    return "📦";
-  };
 
   // Cart operations
   const addToCart = (product: Product) => {
@@ -1445,138 +1551,13 @@ export default function App() {
       eventOrOrder && eventOrOrder.orderId ? eventOrOrder : lastOrderDetails;
     if (!orderToPrint) return;
 
-    // Buka window baru untuk isolasi style print khusus thermal 58mm
-    const printWindow = window.open("", "_blank", "width=400,height=600");
-    if (!printWindow) return;
-
-    // Grab the existing logo source from the header
-    const headerLogoEl = document.querySelector(
-      "header img",
-    ) as HTMLImageElement;
-    const logoSrc = headerLogoEl ? headerLogoEl.src : "";
-
-    const taglines = [
-      "A little box of happiness just for you.",
-      "Life is short, make it sweet.",
-      "Baked with love, served with a smile.",
-      "Dessert goes to the heart, not the stomach.",
-      "Sweeten up your day!",
-      "Enjoy the sweetness of today.",
-      "Semoga harimu semanis hidangan ini.",
-      "Ada cinta dan kebahagiaan di setiap suapan.",
-      "Manisnya pas, kayak senyum kamu hari ini :)",
-      "Terima kasih sudah mampir! Jangan lupa bahagia hari ini.",
-      "Satu gigitan untuk mengembalikan mood manismu.",
-    ];
-
-    const thankYouMessages = [
-      "Share your sweet moments and tag us @legiydessert",
-      "Suka dessert-nya? Yuk, tag Instagram kami di @legiy.dessert",
-      "We’d love to see your smile! Tag us @legiydessert",
-    ];
-
-    const randomTagline = taglines[Math.floor(Math.random() * taglines.length)];
-    const randomThankYou =
-      thankYouMessages[Math.floor(Math.random() * thankYouMessages.length)];
-
-    // Fungsi Javascript untuk mencetak receipt ke printer thermal
-    const receiptHtml = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Print Receipt</title>
-        <style>
-          /* CSS khusus kertas thermal 58mm */
-          @page { margin: 0; size: 58mm auto; }
-          body { 
-            font-family: monospace; 
-            margin: 0; 
-            padding: 4mm;
-            width: 58mm;
-            box-sizing: border-box;
-            color: black;
-            font-size: 11px;
-            line-height: 1.2;
-          }
-          .center { text-align: center; }
-          .logo {
-            display: block;
-            margin: 0 auto 5px auto;
-            max-width: 40px; /* Ukuran pas untuk 58mm */
-            max-height: 40px;
-            object-fit: contain;
-            filter: grayscale(100%); /* Thermal printer mendukung grayscale/hitam putih */
-          }
-          .bold { font-weight: bold; }
-          .divider { border-bottom: 1px dashed black; margin: 4px 0; }
-          .flex { display: flex; justify-content: space-between; }
-          .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-        </style>
-      </head>
-      <body>
-        <div class="center">
-          <img src="${logoSrc}" alt="Logo" class="logo" />
-          <div class="bold" style="font-size: 14px;">LEGIY DESSERT</div>
-          <div style="margin: 2px 0 4px 0;">${randomTagline}</div>
-        </div>
-        <div class="divider"></div>
-        <div>No: ${orderToPrint.orderId}</div>
-        <div>Customer: ${orderToPrint.customerName || "-"}</div>
-        <div>TGL: ${new Date(orderToPrint.timestamp).toLocaleDateString("id-ID")} ${new Date(orderToPrint.timestamp).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</div>
-        <div>Tipe: ${orderToPrint.orderType}</div>
-        <div class="divider"></div>
-        
-        ${orderToPrint.cartSnapshot
-          .map(
-            (item: any) => `
-          <div style="margin-bottom: 3px;">
-            <div class="bold truncate">${item.name}</div>
-            <div class="flex">
-              <span>${item.quantity} x ${item.price.toLocaleString("id-ID")}</span>
-              <span>${(item.price * item.quantity).toLocaleString("id-ID")}</span>
-            </div>
-          </div>
-        `,
-          )
-          .join("")}
-        
-        <div class="divider"></div>
-        <div class="flex"><span>Subtotal</span><span>${orderToPrint.subtotal.toLocaleString("id-ID")}</span></div>
-        ${orderToPrint.discount ? `<div class="flex"><span>Diskon</span><span>-${orderToPrint.discount.toLocaleString("id-ID")}</span></div>` : ""}
-        ${orderToPrint.tax > 0 ? `<div class="flex"><span>PB1</span><span>${orderToPrint.tax.toLocaleString("id-ID")}</span></div>` : ""}
-        <div class="divider"></div>
-        <div class="flex bold" style="font-size: 13px;"><span>TOTAL</span><span>${orderToPrint.total.toLocaleString("id-ID")}</span></div>
-        <div class="flex" style="margin-top: 2px;"><span>Pay (${orderToPrint.paymentMethod})</span><span>${orderToPrint.cashGiven.toLocaleString("id-ID")}</span></div>
-        ${
-          orderToPrint.paymentMethod === "Cash"
-            ? `
-          <div class="flex"><span>Kembalian</span><span>${orderToPrint.change.toLocaleString("id-ID")}</span></div>
-        `
-            : ""
-        }
-        <div class="divider"></div>
-        <div class="center" style="margin-top: 8px;">
-          <div style="margin-bottom: 4px;">${randomThankYou}</div>
-          <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://linktr.ee/legiy_dessert" alt="QR Code" style="width: 50px; height: 50px; margin-bottom: 4px;" />
-        </div>
-      </body>
-      </html>
-    `;
-
-    printWindow.document.write(receiptHtml);
-    printWindow.document.close();
-    printWindow.focus();
-
-    // Beri waktu sejenak (500ms) agar image Base64 dan QR selesai dirender sebelum dikirim ke printer
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 500);
+    setReceiptToPrint(orderToPrint);
   };
 
   // Render Header
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#FDFBF7] font-sans text-stone-800 overflow-hidden">
+    <div className="flex flex-col h-screen w-screen bg-[#FDFBF7] font-sans text-stone-800 overflow-hidden relative">
+      <div className="flex flex-col h-full w-full print:hidden">
       {/* Top Header Bar */}
       <header className="h-16 flex items-center justify-between px-8 bg-white border-b border-stone-200 shadow-sm shrink-0 print:hidden z-10">
         <div className="flex items-center gap-10">
@@ -1617,10 +1598,10 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-6">
-          {isSyncing && (
+          {syncStatus && (
             <div className="hidden sm:flex items-center gap-2 text-xs text-stone-500 bg-stone-100 px-3 py-1.5 rounded-full">
               <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-              Syncing...
+              {syncStatus}
             </div>
           )}
           <div className="text-right hidden sm:block">
@@ -1642,21 +1623,14 @@ export default function App() {
               <button
                 key={cat}
                 onClick={() => setActiveCategory(cat)}
-                className={`flex flex-col items-center justify-center aspect-square rounded-2xl transition-all duration-200
+                className={`flex flex-col items-center justify-center p-3 h-16 rounded-2xl transition-all duration-200
                 ${
                   activeCategory === cat
                     ? "bg-[#D81B60] text-white shadow-lg border-2 border-transparent"
                     : "bg-white text-stone-500 shadow-sm border border-stone-100 hover:bg-stone-50 hover:border-stone-200"
                 }`}
               >
-                {cat === "Semua" && <span className="text-2xl">🍽️</span>}
-                {cat === "Signature Dessert" && (
-                  <span className="text-2xl">🍰</span>
-                )}
-                {cat === "Kopi" && <span className="text-2xl">☕</span>}
-                {cat === "Non-Kopi" && <span className="text-2xl">🍵</span>}
-                {cat === "Add-ons" && <span className="text-2xl">✨</span>}
-                <span className="text-[10px] font-bold mt-1 leading-tight text-center">
+                <span className="text-[10px] font-bold leading-tight text-center">
                   {cat.replace("Signature Dessert", "Dessert")}
                 </span>
               </button>
@@ -1691,18 +1665,12 @@ export default function App() {
               <div
                 key={`${product.id}-${idx}`}
                 onClick={() => addToCart(product)}
-                className={`bg-white rounded-2xl p-3 shadow-sm border flex flex-col cursor-pointer transition-all active:scale-95 group select-none hover:shadow-md
+                className={`bg-white rounded-2xl p-4 shadow-sm border flex flex-col cursor-pointer transition-all active:scale-95 group select-none hover:shadow-md h-full min-h-[120px]
                 ${cart.find((c) => c.id === product.id) ? "border-[#D81B60] ring-2 ring-[#D81B60] ring-offset-2" : "border-stone-100 hover:border-[#D81B60]"}`}
               >
-                <div className="w-full aspect-square bg-[#F5F5F0] rounded-xl mb-3 flex items-center justify-center font-bold text-4xl group-hover:bg-white transition-colors duration-300">
-                  {getCategoryIcon(product.category)}
-                </div>
-                <h3 className="text-sm font-bold text-stone-700 leading-tight line-clamp-2 min-h-[2.5rem]">
+                <h3 className="text-sm font-bold text-stone-700 leading-tight line-clamp-2 min-h-[2.5rem] mb-3">
                   {product.name}
                 </h3>
-                <p className="text-[10px] uppercase tracking-wide text-stone-400 mt-1 mb-3 font-semibold">
-                  {product.category}
-                </p>
                 <div className="mt-auto flex justify-between items-center">
                   <span className="text-sm font-bold text-[#D81B60]">
                     {formatRupiah(product.price)}
@@ -1778,10 +1746,7 @@ export default function App() {
                   </div>
                 ) : (
                   cart.map((item) => (
-                    <div key={item.id} className="flex gap-3 group">
-                      <div className="w-10 h-10 bg-stone-50 rounded-lg flex shrink-0 items-center justify-center font-bold text-lg text-stone-600">
-                        {getCategoryIcon(item.category)}
-                      </div>
+                    <div key={item.id} className="flex gap-3 group items-center">
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between gap-2">
                           <h4 className="text-xs font-bold text-stone-800 line-clamp-1">
@@ -1901,6 +1866,7 @@ export default function App() {
                     "EXPENSE",
                     "COGS",
                     "PERFORMANCE",
+                    "SETTINGS",
                   ] as ManagementTab[]
                 ).map((tab) => (
                   <button
@@ -1958,6 +1924,12 @@ export default function App() {
               )}
               {managementTab === "PERFORMANCE" && (
                 <ManagementPerformance orderHistory={orderHistory} />
+              )}
+              {managementTab === "SETTINGS" && (
+                <ManagementSettings 
+                  receiptSettings={receiptSettings} 
+                  setReceiptSettings={setReceiptSettings} 
+                />
               )}
             </div>
           </div>
@@ -2333,6 +2305,8 @@ export default function App() {
         </div>
       )}
 
+      </div>
+
       {/* GLOBAL STYLES */}
       <style>{`
         ::-webkit-scrollbar {
@@ -2351,10 +2325,68 @@ export default function App() {
         }
         
         @media print {
-          @page { margin: 0; size: 80mm 200mm; }
-          body { font-size: 12pt; overflow: hidden; background: white; color: #1c1917; }
+          @page { margin: 0; size: 58mm auto; }
+          body { 
+            font-family: monospace; 
+            margin: 0; 
+            padding: 4mm;
+            width: 58mm;
+            box-sizing: border-box;
+            color: black;
+            font-size: 11px;
+            line-height: 1.2;
+            background: white !important;
+          }
         }
       `}</style>
+
+      {/* PRINTABLE RECEIPT TEMPLATE (HIDDEN ON SCREEN) */}
+      {receiptToPrint && (
+        <div className="hidden print:block absolute top-0 left-0 bg-white z-[9999] w-[58mm] text-black font-mono text-[11px] leading-tight p-[4mm]">
+          <div className="text-center mb-1">
+            <div className="font-bold text-[14px]">{receiptSettings.storeName}</div>
+            <div style={{ padding: "2px 0 4px 0" }}>{receiptSettings.storeAddress}</div>
+          </div>
+          <div className="border-b border-dashed border-black my-1"></div>
+          <div>No: {receiptToPrint.orderId}</div>
+          <div>Customer: {receiptToPrint.customerName || "-"}</div>
+          <div>TGL: {new Date(receiptToPrint.timestamp).toLocaleDateString("id-ID")} {new Date(receiptToPrint.timestamp).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</div>
+          <div>Tipe: {receiptToPrint.orderType}</div>
+          <div className="border-b border-dashed border-black my-1"></div>
+          
+          {receiptToPrint.cartSnapshot && receiptToPrint.cartSnapshot.map((item: any, idx: number) => (
+            <div key={idx} className="mb-1">
+              <div className="font-bold truncate">{item.name}</div>
+              <div className="flex justify-between">
+                <span>{item.quantity} x {item.price.toLocaleString("id-ID")}</span>
+                <span>{(item.price * item.quantity).toLocaleString("id-ID")}</span>
+              </div>
+            </div>
+          ))}
+
+          {!receiptToPrint.cartSnapshot && receiptToPrint.items && typeof receiptToPrint.items === 'string' && (
+            <div className="mb-1 whitespace-pre-wrap">
+              {receiptToPrint.items}
+            </div>
+          )}
+          
+          <div className="border-b border-dashed border-black my-1"></div>
+          <div className="flex justify-between"><span>Subtotal</span><span>{receiptToPrint.subtotal.toLocaleString("id-ID")}</span></div>
+          {receiptToPrint.discount ? <div className="flex justify-between"><span>Diskon</span><span>-{receiptToPrint.discount.toLocaleString("id-ID")}</span></div> : null}
+          {receiptToPrint.tax > 0 ? <div className="flex justify-between"><span>PB1</span><span>{receiptToPrint.tax.toLocaleString("id-ID")}</span></div> : null}
+          <div className="border-b border-dashed border-black my-1"></div>
+          <div className="flex justify-between font-bold text-[13px]"><span>TOTAL</span><span>{receiptToPrint.total.toLocaleString("id-ID")}</span></div>
+          <div className="flex justify-between mt-1"><span>Pay ({receiptToPrint.paymentMethod})</span><span>{receiptToPrint.cashGiven.toLocaleString("id-ID")}</span></div>
+          {receiptToPrint.paymentMethod === "Cash" && (
+            <div className="flex justify-between"><span>Kembalian</span><span>{receiptToPrint.change.toLocaleString("id-ID")}</span></div>
+          )}
+          <div className="border-b border-dashed border-black my-2"></div>
+          <div className="text-center mt-2">
+            <div className="mb-1">{receiptSettings.footerText1}</div>
+            <div className="mb-1">{receiptSettings.footerText2}</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

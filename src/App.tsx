@@ -1424,10 +1424,25 @@ export default function App() {
 
   useEffect(() => {
     if (receiptToPrint) {
-      setTimeout(() => {
-        window.print();
+      // Create an afterprint handler to reset receiptToPrint after printing is complete or canceled
+      const handleAfterPrint = () => {
         setReceiptToPrint(null);
+      };
+      
+      window.addEventListener("afterprint", handleAfterPrint);
+
+      const timer = setTimeout(() => {
+        window.print();
+        // Fallback cleanup in case afterprint does not fire or is delayed in some custom webviews / browsers
+        setTimeout(() => {
+          setReceiptToPrint(null);
+        }, 3000);
       }, 500);
+
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener("afterprint", handleAfterPrint);
+      };
     }
   }, [receiptToPrint]);
 
@@ -1732,7 +1747,7 @@ export default function App() {
 
   // Render Header
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#FDFBF7] font-sans text-stone-800 overflow-hidden relative">
+    <div id="root-container" className="flex flex-col h-screen w-screen bg-[#FDFBF7] font-sans text-stone-800 overflow-hidden relative">
       <div className="flex flex-col h-full w-full print:hidden">
       {/* Top Header Bar */}
       <header className="h-16 flex items-center justify-between px-3 sm:px-8 bg-white border-b border-stone-200 shadow-sm shrink-0 print:hidden z-10">
@@ -2603,8 +2618,14 @@ export default function App() {
         @media print {
           html, body {
             height: auto !important;
+            min-height: auto !important;
             overflow: visible !important;
             background: white !important;
+          }
+          #root-container, #root, #root-container * {
+            height: auto !important;
+            min-height: auto !important;
+            overflow: visible !important;
           }
           body * {
             visibility: hidden !important;

@@ -18,6 +18,7 @@ import {
   ArrowUpToLine,
   History,
   User,
+  Search,
 } from "lucide-react";
 import { products, formatRupiah, Category, Product, initialCategories } from "./data";
 import { syncToGoogleSheets, fetchFromGoogleSheets } from "./googleSheetsService";
@@ -53,6 +54,90 @@ function useLocalStorage<T>(key: string, initialValue: T) {
 
   return [storedValue, setValue] as const;
 }
+
+const parseIndonesianNumber = (val: any): number => {
+  if (typeof val === 'number') return val;
+  if (!val) return 0;
+  
+  let str = String(val).trim();
+  str = str.replace(/^Rp\.?\s*/i, "");
+  
+  if (str.includes('.') && !str.includes(',')) {
+    const parts = str.split('.');
+    const isIndoFormat = parts.slice(1).every((part) => part.length === 3);
+    if (isIndoFormat) {
+      str = str.replace(/\./g, "");
+    }
+  } else if (str.includes(',') && str.includes('.')) {
+    if (str.indexOf('.') < str.indexOf(',')) {
+      str = str.replace(/\./g, "").replace(/,/g, ".");
+    } else {
+      str = str.replace(/,/g, "");
+    }
+  } else if (str.includes(',')) {
+    const parts = str.split(',');
+    const isThousandSeparator = parts.slice(1).every((part) => part.length === 3);
+    if (isThousandSeparator) {
+      str = str.replace(/,/g, "");
+    } else {
+      str = str.replace(/,/g, ".");
+    }
+  }
+  
+  const parsed = parseFloat(str);
+  return isNaN(parsed) ? 0 : parsed;
+};
+
+const getCartSnapshotOrFallback = (o: any, productList: Product[]): any[] => {
+  if (o.cartSnapshot) {
+    if (typeof o.cartSnapshot === 'string') {
+      try {
+        const parsed = JSON.parse(o.cartSnapshot);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {}
+    } else if (Array.isArray(o.cartSnapshot)) {
+      return o.cartSnapshot;
+    }
+  }
+  
+  if (o.items && typeof o.items === 'string') {
+    const itemsList: any[] = [];
+    const parts = o.items.split(', ');
+    parts.forEach((p: string) => {
+      const match = p.match(/(.+?)\s*\((\d+)x\)/);
+      if (match) {
+        const name = match[1].trim();
+        const quantity = parseInt(match[2]) || 1;
+        const prod = productList.find((x) => x.name.toLowerCase() === name.toLowerCase());
+        itemsList.push({
+          id: prod?.id || name,
+          name: name,
+          price: prod?.price || 0,
+          cogs: prod?.cogs || 0,
+          quantity: quantity
+        });
+      } else {
+        const match2 = p.match(/^(\d+)x\s+(.+)$/);
+        if (match2) {
+          const quantity = parseInt(match2[1]) || 1;
+          let name = match2[2].trim();
+          name = name.replace(/\s*\(Rp\s*\d+[.,]?\d*\)/i, '').trim();
+          const prod = productList.find((x) => x.name.toLowerCase() === name.toLowerCase());
+          itemsList.push({
+            id: prod?.id || name,
+            name: name,
+            price: prod?.price || 0,
+            cogs: prod?.cogs || 0,
+            quantity: quantity
+          });
+        }
+      }
+    });
+    if (itemsList.length > 0) return itemsList;
+  }
+  
+  return [];
+};
 
 function ManagementMenu({
   productList,
@@ -335,15 +420,24 @@ function ManagementHistory({
   setOrderHistory: any;
   queueSync: any;
 }) {
+  const sortedOrderHistory = useMemo(() => {
+    const list = Array.isArray(orderHistory) ? orderHistory : [];
+    return [...list].sort((a, b) => {
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return timeB - timeA;
+    });
+  }, [orderHistory]);
+
   return (
     <div className="p-6 h-full flex flex-col">
       <div className="flex items-center mb-6">
         <h3 className="text-lg font-bold text-stone-800">
-          Order History ({orderHistory.length})
+          Order History ({sortedOrderHistory.length})
         </h3>
       </div>
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-        {orderHistory.length === 0 ? (
+        {sortedOrderHistory.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-stone-300">
             <History size={48} className="opacity-20 mb-3" />
             <p className="text-sm font-bold text-stone-400">
@@ -365,68 +459,71 @@ function ManagementHistory({
               </tr>
             </thead>
             <tbody>
-              {orderHistory.map((o, idx) => (
-                <tr
-                  key={`${o.orderId}-${idx}`}
-                  className="border-b border-stone-100 hover:bg-stone-50 transition-colors group"
-                >
-                  <td className="py-4 text-sm font-mono font-bold text-stone-800">
-                    {o.orderId}
-                  </td>
-                  <td className="py-4 text-xs font-semibold text-stone-500">
-                    {new Date(o.timestamp).toLocaleDateString("id-ID")}{" "}
-                    <span className="text-stone-400 ml-1">
-                      {new Date(o.timestamp).toLocaleTimeString("id-ID", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                  </td>
-                  <td className="py-4 text-xs font-bold text-stone-800">
-                    {o.customerName || "-"}
-                  </td>
-                  <td className="py-4 text-xs font-bold text-stone-600">
-                    <span
-                      className={`px-2 py-1 rounded-md ${o.orderType === "Dine-in" ? "bg-blue-50 text-blue-700" : "bg-orange-50 text-orange-700"}`}
-                    >
-                      {o.orderType}
-                    </span>
-                  </td>
-                  <td className="py-4 text-xs font-bold text-stone-600">
-                    {o.paymentMethod}
-                  </td>
-                  <td className="py-4 text-sm font-mono font-bold text-[#D81B60] text-right">
-                    {formatRupiah(o.total)}
-                  </td>
-                  <td className="py-4 text-center">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        printReceipt(o);
-                      }}
-                      title="Print Receipt"
-                      className="p-2 text-stone-400 hover:text-[#D81B60] hover:bg-stone-50 rounded-lg transition-colors inline-block"
-                    >
-                      <Printer size={16} />
-                    </button>
-                  </td>
-                  <td className="py-4 text-center">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (confirm(`Yakin ingin menghapus Order ${o.orderId}?`)) {
-                          setOrderHistory((prev: any[]) => prev.filter((x) => x.orderId !== o.orderId));
-                          queueSync("ORDER", "DELETE", { orderId: o.orderId });
-                        }
-                      }}
-                      title="Hapus Order"
-                      className="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100 inline-block"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {sortedOrderHistory.map((o, idx) => {
+                const displayTotal = typeof o.total === 'number' ? o.total : parseIndonesianNumber(o.total);
+                return (
+                  <tr
+                    key={`${o.orderId}-${idx}`}
+                    className="border-b border-stone-100 hover:bg-stone-50 transition-colors group"
+                  >
+                    <td className="py-4 text-sm font-mono font-bold text-stone-800">
+                      {o.orderId}
+                    </td>
+                    <td className="py-4 text-xs font-semibold text-stone-500">
+                      {new Date(o.timestamp).toLocaleDateString("id-ID")}{" "}
+                      <span className="text-stone-400 ml-1">
+                        {new Date(o.timestamp).toLocaleTimeString("id-ID", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </td>
+                    <td className="py-4 text-xs font-bold text-stone-800">
+                      {o.customerName || "-"}
+                    </td>
+                    <td className="py-4 text-xs font-bold text-stone-600">
+                      <span
+                        className={`px-2 py-1 rounded-md ${o.orderType === "Dine-in" ? "bg-blue-50 text-blue-700" : "bg-orange-50 text-orange-700"}`}
+                      >
+                        {o.orderType}
+                      </span>
+                    </td>
+                    <td className="py-4 text-xs font-bold text-stone-600">
+                      {o.paymentMethod}
+                    </td>
+                    <td className="py-4 text-sm font-mono font-bold text-[#D81B60] text-right">
+                      {formatRupiah(displayTotal)}
+                    </td>
+                    <td className="py-4 text-center">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          printReceipt(o);
+                        }}
+                        title="Print Receipt"
+                        className="p-2 text-stone-400 hover:text-[#D81B60] hover:bg-stone-50 rounded-lg transition-colors inline-block"
+                      >
+                        <Printer size={16} />
+                      </button>
+                    </td>
+                    <td className="py-4 text-center">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Yakin ingin menghapus Order ${o.orderId}?`)) {
+                            setOrderHistory((prev: any[]) => prev.filter((x) => x.orderId !== o.orderId));
+                            queueSync("ORDER", "DELETE", { orderId: o.orderId });
+                          }
+                        }}
+                        title="Hapus Order"
+                        className="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100 inline-block"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -439,10 +536,12 @@ function ManagementFinance({
   orderHistory,
   expenses,
   setExpenses,
+  productList,
 }: {
   orderHistory: any[];
   expenses: any[];
   setExpenses: any;
+  productList: Product[];
 }) {
   const [filter, setFilter] = useState<
     "DAILY" | "THIS_MONTH" | "ALL" | "CUSTOM"
@@ -454,9 +553,48 @@ function ManagementFinance({
     () => new Date().toISOString().split("T")[0],
   );
 
+  const parsedOrders = useMemo(() => {
+    const history = Array.isArray(orderHistory) ? orderHistory : [];
+    return history.map((o) => {
+      if (!o) return o;
+      const total = parseIndonesianNumber(o.total);
+      const subtotal = parseIndonesianNumber(o.subtotal || o.total);
+      const discount = parseIndonesianNumber(o.discount);
+      const tax = parseIndonesianNumber(o.tax);
+      const cashGiven = parseIndonesianNumber(o.cashGiven);
+      const change = parseIndonesianNumber(o.change);
+      const snapshot = getCartSnapshotOrFallback(o, productList);
+      
+      return {
+        ...o,
+        total,
+        subtotal,
+        discount,
+        tax,
+        cashGiven,
+        change,
+        cartSnapshot: snapshot,
+      };
+    });
+  }, [orderHistory, productList]);
+
+  const parsedExpenses = useMemo(() => {
+    const list = Array.isArray(expenses) ? expenses : [];
+    return list.map((e) => {
+      if (!e) return e;
+      const amount = parseIndonesianNumber(e.amount);
+      return {
+        ...e,
+        amount,
+      };
+    });
+  }, [expenses]);
+
   const filteredOrders = useMemo(() => {
-    return orderHistory.filter((o) => {
+    return parsedOrders.filter((o) => {
+      if (!o || !o.timestamp) return false;
       const date = new Date(o.timestamp);
+      if (isNaN(date.getTime())) return false;
       const now = new Date();
       if (filter === "DAILY") return date.toDateString() === now.toDateString();
       if (filter === "THIS_MONTH")
@@ -472,11 +610,13 @@ function ManagementFinance({
       }
       return true;
     });
-  }, [orderHistory, filter, customStart, customEnd]);
+  }, [parsedOrders, filter, customStart, customEnd]);
 
   const filteredExpenses = useMemo(() => {
-    return expenses.filter((e) => {
+    return parsedExpenses.filter((e) => {
+      if (!e || !e.timestamp) return false;
       const date = new Date(e.timestamp);
+      if (isNaN(date.getTime())) return false;
       const now = new Date();
       if (filter === "DAILY") return date.toDateString() === now.toDateString();
       if (filter === "THIS_MONTH")
@@ -492,16 +632,15 @@ function ManagementFinance({
       }
       return true;
     });
-  }, [expenses, filter, customStart, customEnd]);
+  }, [parsedExpenses, filter, customStart, customEnd]);
 
   const totalRevenue = filteredOrders.reduce((acc, o) => acc + o.total, 0);
   const totalCOGS = filteredOrders.reduce((acc, o) => {
-    const cogs = o.cartSnapshot
-      ? o.cartSnapshot.reduce(
-          (cAcc: number, item: any) => cAcc + (item.cogs || 0) * item.quantity,
-          0,
-        )
-      : 0;
+    const snapshot = o.cartSnapshot || [];
+    const cogs = snapshot.reduce(
+      (cAcc: number, item: any) => cAcc + (item.cogs || 0) * item.quantity,
+      0,
+    );
     return acc + cogs;
   }, 0);
   const totalExpense = filteredExpenses.reduce((acc, e) => acc + e.amount, 0);
@@ -1022,22 +1161,41 @@ function ManagementCOGS({ productList }: { productList: Product[] }) {
 }
 
 function ManagementPerformance({ orderHistory }: { orderHistory: any[] }) {
-  const itemCounts = orderHistory.reduce(
+  const history = Array.isArray(orderHistory) ? orderHistory : [];
+  const itemCounts = history.reduce(
     (acc, order) => {
-      if (order.cartSnapshot) {
-        order.cartSnapshot.forEach((item: any) => {
-          acc[item.name] = (acc[item.name] || 0) + item.quantity;
+      let snapshot = order && order.cartSnapshot;
+      if (typeof snapshot === 'string') {
+        try {
+          snapshot = JSON.parse(snapshot);
+        } catch (e) {
+          snapshot = null;
+        }
+      }
+
+      if (snapshot && Array.isArray(snapshot)) {
+        snapshot.forEach((item: any) => {
+          if (item && item.name) {
+            acc[item.name] = (acc[item.name] || 0) + item.quantity;
+          }
         });
-      } else if (order.items) {
-        // parse the items string fallback if cartSnapshot is missing
-        // format: "2x Item Name (Rp 20.000)\n1x ..."
-        const lines = typeof order.items === 'string' ? order.items.split('\n') : [];
-        lines.forEach((line: string) => {
-          const match = line.match(/^(\d+)x\s+(.+)\s+\(Rp.*$/);
+      } else if (order && order.items && typeof order.items === 'string') {
+        // Can be comma-separated or newline-separated
+        const parts = order.items.includes('\n') ? order.items.split('\n') : order.items.split(', ');
+        parts.forEach((p: string) => {
+          const match = p.match(/(.+?)\s*\((\d+)x\)/);
           if (match) {
-            const qty = parseInt(match[1]);
-            const name = match[2];
+            const name = match[1].trim();
+            const qty = parseInt(match[2]) || 1;
             acc[name] = (acc[name] || 0) + qty;
+          } else {
+            const match2 = p.match(/^(\d+)x\s+(.+)$/);
+            if (match2) {
+              const qty = parseInt(match2[1]) || 1;
+              let name = match2[2].trim();
+              name = name.replace(/\s*\(Rp\s*\d+[.,]?\d*\)/i, '').trim();
+              acc[name] = (acc[name] || 0) + qty;
+            }
           }
         });
       }
@@ -1068,7 +1226,7 @@ function ManagementPerformance({ orderHistory }: { orderHistory: any[] }) {
             <div className="space-y-3">
               {sortedItems.slice(0, 10).map(([name, qty], idx) => (
                 <div
-                  key={name}
+                   key={name}
                   className="flex justify-between items-center bg-stone-50 p-3 rounded-lg border border-stone-100"
                 >
                   <span className="text-sm font-bold text-stone-700 flex items-center gap-3">
@@ -1092,7 +1250,7 @@ function ManagementPerformance({ orderHistory }: { orderHistory: any[] }) {
           <div className="flex justify-around mt-8">
             <div className="text-center p-4 bg-blue-50 rounded-2xl w-32 outline outline-1 outline-blue-100">
               <p className="text-3xl font-black text-blue-600">
-                {orderHistory.filter((o) => o.orderType === "Dine-in").length}
+                {history.filter((o) => o?.orderType === "Dine-in").length}
               </p>
               <p className="text-[10px] font-bold text-blue-800 uppercase tracking-widest mt-2">
                 Dine-In
@@ -1100,7 +1258,7 @@ function ManagementPerformance({ orderHistory }: { orderHistory: any[] }) {
             </div>
             <div className="text-center p-4 bg-orange-50 rounded-2xl w-32 outline outline-1 outline-orange-100">
               <p className="text-3xl font-black text-orange-600">
-                {orderHistory.filter((o) => o.orderType === "Takeaway").length}
+                {history.filter((o) => o?.orderType === "Takeaway").length}
               </p>
               <p className="text-[10px] font-bold text-orange-800 uppercase tracking-widest mt-2">
                 Takeaway
@@ -1238,6 +1396,7 @@ export default function App() {
   const [preOrders, setPreOrders] = useLocalStorage<any[]>("legiy_preorders", []);
 
   const [activeCategory, setActiveCategory] = useState<string>("Semua");
+  const [searchQuery, setSearchQuery] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discount, setDiscount] = useState<number>(0);
   const [orderType, setOrderType] = useState<OrderType>("Dine-in");
@@ -1254,6 +1413,7 @@ export default function App() {
   });
 
   const [receiptToPrint, setReceiptToPrint] = useState<any>(null);
+  const [isEditingReceipt, setIsEditingReceipt] = useState(false);
 
   useEffect(() => {
     if (receiptToPrint) {
@@ -1435,11 +1595,20 @@ export default function App() {
   // We'll set 10% pb1 tax as an example, but it can be changed.
   const TAX_RATE = 0; // Set to 0.1 for 10% tax
 
-  // Filter products by category
-  const filteredProducts =
-    activeCategory === "Semua"
+  // Filter products by category and search query
+  const filteredProducts = useMemo(() => {
+    let result = activeCategory === "Semua"
       ? productList
       : productList.filter((p) => p.category === activeCategory);
+      
+    if (searchQuery.trim() !== "") {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (p) => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [productList, activeCategory, searchQuery]);
 
   // Cart operations
   const addToCart = (product: Product) => {
@@ -1639,6 +1808,30 @@ export default function App() {
 
           {/* Product Grid (Center) */}
           <section className="flex-1 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 content-start overflow-y-auto pb-8 print:hidden pr-1 custom-scrollbar">
+            {/* Search Bar */}
+            <div className="col-span-full">
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Cari menu di sini..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-white text-stone-800 text-sm font-bold pl-11 pr-10 py-3.5 rounded-2xl shadow-sm border border-stone-200 outline-none focus:border-[#D81B60] focus:ring-2 focus:ring-[#D81B60]/10 transition-all placeholder-stone-400"
+                />
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400">
+                  <Search size={16} />
+                </span>
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-xs text-stone-400 hover:text-stone-600 px-1 py-1 rounded bg-stone-100 transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Mobile Categories Dropdown */}
             <div className="col-span-full sm:hidden mb-2">
               <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
@@ -1661,35 +1854,43 @@ export default function App() {
               </div>
             </div>
 
-            {filteredProducts.map((product, idx) => (
-              <div
-                key={`${product.id}-${idx}`}
-                onClick={() => addToCart(product)}
-                className={`bg-white rounded-2xl p-4 shadow-sm border flex flex-col cursor-pointer transition-all active:scale-95 group select-none hover:shadow-md h-full min-h-[120px]
-                ${cart.find((c) => c.id === product.id) ? "border-[#D81B60] ring-2 ring-[#D81B60] ring-offset-2" : "border-stone-100 hover:border-[#D81B60]"}`}
-              >
-                <h3 className="text-sm font-bold text-stone-700 leading-tight line-clamp-2 min-h-[2.5rem] mb-3">
-                  {product.name}
-                </h3>
-                <div className="mt-auto flex justify-between items-center">
-                  <span className="text-sm font-bold text-[#D81B60]">
-                    {formatRupiah(product.price)}
-                  </span>
-
-                  {cart.find((c) => c.id === product.id) ? (
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-white bg-[#D81B60]">
-                      <span className="text-xs">
-                        {cart.find((c) => c.id === product.id)?.quantity}x
-                      </span>
-                    </div>
-                  ) : (
-                    <button className="w-8 h-8 bg-stone-100 group-hover:bg-[#D81B60] group-hover:text-white transition-colors rounded-lg flex items-center justify-center font-bold text-stone-600">
-                      <Plus size={16} />
-                    </button>
-                  )}
-                </div>
+            {filteredProducts.length === 0 ? (
+              <div className="col-span-full py-16 flex flex-col items-center justify-center text-center">
+                <Search size={40} className="text-stone-300 mb-3" />
+                <p className="text-sm font-bold text-stone-500">Menu tidak ditemukan</p>
+                <p className="text-xs text-stone-400 mt-1">Coba cari dengan nama menu atau kategori lain.</p>
               </div>
-            ))}
+            ) : (
+              filteredProducts.map((product, idx) => (
+                <div
+                  key={`${product.id}-${idx}`}
+                  onClick={() => addToCart(product)}
+                  className={`bg-white rounded-2xl p-4 shadow-sm border flex flex-col cursor-pointer transition-all active:scale-95 group select-none hover:shadow-md h-full min-h-[120px]
+                  ${cart.find((c) => c.id === product.id) ? "border-[#D81B60] ring-2 ring-[#D81B60] ring-offset-2" : "border-stone-100 hover:border-[#D81B60]"}`}
+                >
+                  <h3 className="text-sm font-bold text-stone-700 leading-tight line-clamp-2 min-h-[2.5rem] mb-3">
+                    {product.name}
+                  </h3>
+                  <div className="mt-auto flex justify-between items-center">
+                    <span className="text-sm font-bold text-[#D81B60]">
+                      {formatRupiah(product.price)}
+                    </span>
+
+                    {cart.find((c) => c.id === product.id) ? (
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-white bg-[#D81B60]">
+                        <span className="text-xs">
+                          {cart.find((c) => c.id === product.id)?.quantity}x
+                        </span>
+                      </div>
+                    ) : (
+                      <button className="w-8 h-8 bg-stone-100 group-hover:bg-[#D81B60] group-hover:text-white transition-colors rounded-lg flex items-center justify-center font-bold text-stone-600">
+                        <Plus size={16} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
           </section>
 
           {/* Right Panel: Cart & Payment */}
@@ -1903,6 +2104,7 @@ export default function App() {
                   orderHistory={orderHistory}
                   expenses={expenses}
                   setExpenses={setExpenses}
+                  productList={productList}
                 />
               )}
               {managementTab === "PRE_ORDER" && (
@@ -2164,15 +2366,37 @@ export default function App() {
             {/* Receipt Content */}
             <div className="p-8 pb-4" id="receipt-content">
               <div className="text-center mb-6 border-b-2 border-dashed border-stone-200 pb-6">
-                <h1 className="text-2xl font-black text-stone-800 tracking-tight mb-1">
-                  LEGIY <span className="text-[#D81B60]">DESSERT</span>
-                </h1>
-                <p className="text-xs text-stone-500 font-medium">
-                  Jl. Contoh No. 123, Kota Anda
-                </p>
-                <p className="text-xs text-stone-500 font-medium tracking-wide mt-1">
-                  IG: @legiydessert
-                </p>
+                {isEditingReceipt ? (
+                  <div className="space-y-1.5">
+                    <div>
+                      <label className="text-[9px] font-bold text-[#D81B60] block uppercase tracking-wider">Nama Toko</label>
+                      <input
+                        type="text"
+                        className="text-center font-bold text-sm text-stone-800 p-1.5 border rounded-lg w-full outline-none focus:border-[#D81B60] focus:ring-1 focus:ring-[#D81B60]"
+                        value={receiptSettings.storeName}
+                        onChange={(e) => setReceiptSettings({ ...receiptSettings, storeName: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-bold text-[#D81B60] block uppercase tracking-wider">Alamat Toko</label>
+                      <input
+                        type="text"
+                        className="text-center text-xs text-stone-500 p-1.5 border rounded-lg w-full outline-none focus:border-[#D81B60] focus:ring-1 focus:ring-[#D81B60]"
+                        value={receiptSettings.storeAddress}
+                        onChange={(e) => setReceiptSettings({ ...receiptSettings, storeAddress: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <h1 className="text-xl font-bold text-stone-800 tracking-tight mb-1">
+                      {receiptSettings.storeName}
+                    </h1>
+                    <p className="text-xs text-stone-500 font-medium">
+                      {receiptSettings.storeAddress}
+                    </p>
+                  </>
+                )}
               </div>
 
               <div className="mb-6 font-mono text-xs space-y-1.5 text-stone-500">
@@ -2182,11 +2406,20 @@ export default function App() {
                     {lastOrderDetails.orderId}
                   </span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center">
                   <span>Customer:</span>{" "}
-                  <span className="text-stone-800">
-                    {lastOrderDetails.customerName}
-                  </span>
+                  {isEditingReceipt ? (
+                    <input
+                      type="text"
+                      className="text-right p-1 border rounded-lg text-xs font-bold text-stone-850 w-36 outline-none focus:border-[#D81B60]"
+                      value={lastOrderDetails.customerName || ""}
+                      onChange={(e) => setLastOrderDetails({ ...lastOrderDetails, customerName: e.target.value })}
+                    />
+                  ) : (
+                    <span className="text-stone-800 font-bold">
+                      {lastOrderDetails.customerName || "-"}
+                    </span>
+                  )}
                 </div>
                 <div className="flex justify-between">
                   <span>Tanggal:</span>{" "}
@@ -2275,31 +2508,67 @@ export default function App() {
                 )}
               </div>
 
-              <div className="text-center mt-10 text-xs text-stone-400 font-medium">
-                <p>Terima kasih telah berbelanja di</p>
-                <p className="font-bold mt-1 text-stone-700 tracking-wider">
-                  Legiy Dessert!
-                </p>
+              <div className="text-center mt-10 text-xs text-stone-400 font-medium space-y-1">
+                {isEditingReceipt ? (
+                  <div className="space-y-1.5 border-t border-dashed border-stone-200 pt-3">
+                    <div>
+                      <label className="text-[9px] font-bold text-[#D81B60] block uppercase tracking-wider text-left">Pesan Kaki 1</label>
+                      <input
+                        type="text"
+                        className="text-center text-xs text-stone-600 p-1.5 border rounded-lg w-full outline-none focus:border-[#D81B60]"
+                        value={receiptSettings.footerText1}
+                        onChange={(e) => setReceiptSettings({ ...receiptSettings, footerText1: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-bold text-[#D81B60] block uppercase tracking-wider text-left">Pesan Kaki 2</label>
+                      <input
+                        type="text"
+                        className="text-center text-xs font-bold text-stone-700 p-1.5 border rounded-lg w-full mt-1 outline-none focus:border-[#D81B60]"
+                        value={receiptSettings.footerText2}
+                        onChange={(e) => setReceiptSettings({ ...receiptSettings, footerText2: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p>{receiptSettings.footerText1}</p>
+                    <p className="font-bold mt-1 text-stone-700 tracking-wider">
+                      {receiptSettings.footerText2}
+                    </p>
+                  </>
+                )}
               </div>
             </div>
 
             {/* Actions */}
-            <div className="p-6 bg-stone-50 border-t border-stone-100 flex gap-3 print:hidden">
+            <div className="p-4 bg-stone-50 border-t border-stone-100 flex flex-col gap-2.5 print:hidden">
               <button
-                onClick={() => {
-                  setLastOrderDetails(null);
-                  setIsCheckoutModalOpen(false);
-                }}
-                className="flex-1 py-4 px-4 rounded-2xl font-bold text-stone-500 bg-white border border-stone-200 hover:bg-stone-50 shadow-sm text-center transition-colors"
+                onClick={() => setIsEditingReceipt(!isEditingReceipt)}
+                className={`w-full py-2.5 px-3 rounded-xl font-bold text-xs flex justify-center items-center transition-all border ${isEditingReceipt ? "bg-stone-800 text-white border-transparent" : "bg-white text-stone-600 border-stone-200 hover:bg-stone-50 shadow-sm"}`}
               >
-                Done
+                <Settings size={14} className="mr-1.5" />
+                {isEditingReceipt ? "Simpan Perubahan Struk" : "Edit Teks Struk (Alamat/Nama/Daftar)"}
               </button>
-              <button
-                onClick={printReceipt}
-                className="flex-1 py-4 px-4 rounded-2xl font-bold bg-[#D81B60] text-white hover:brightness-110 active:scale-95 shadow-lg shadow-[#D81B60]/20 flex justify-center items-center transition-all"
-              >
-                <Printer size={18} className="mr-2" /> Print Receipt
-              </button>
+
+              <div className="flex gap-2 w-full">
+                <button
+                  onClick={() => {
+                    setLastOrderDetails(null);
+                    setIsCheckoutModalOpen(false);
+                    setIsEditingReceipt(false);
+                  }}
+                  className="flex-1 py-3 px-4 rounded-xl font-bold text-stone-500 bg-white border border-stone-200 hover:bg-stone-50 shadow-sm text-center text-xs transition-colors"
+                >
+                  Selesai (Done)
+                </button>
+                <button
+                  onClick={printReceipt}
+                  className="flex-1 py-3 px-4 rounded-xl font-bold bg-[#D81B60] text-white hover:brightness-110 active:scale-95 shadow-lg shadow-[#D81B60]/20 flex justify-center items-center text-xs transition-all"
+                >
+                  <Printer size={14} className="mr-1.5" /> Cetak Struk
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2325,24 +2594,38 @@ export default function App() {
         }
         
         @media print {
-          @page { margin: 0; size: 58mm auto; }
-          body { 
-            font-family: monospace; 
-            margin: 0; 
-            padding: 4mm;
-            width: 58mm;
-            box-sizing: border-box;
-            color: black;
-            font-size: 11px;
-            line-height: 1.2;
+          html, body {
+            height: auto !important;
+            overflow: visible !important;
             background: white !important;
           }
+          body * {
+            visibility: hidden !important;
+          }
+          #print-receipt, #print-receipt * {
+            visibility: visible !important;
+          }
+          #print-receipt {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 58mm !important;
+            display: block !important;
+            padding: 4mm !important;
+            box-sizing: border-box !important;
+            color: black !important;
+            font-family: monospace !important;
+            font-size: 11px !important;
+            line-height: 1.2 !important;
+            background: white !important;
+          }
+          @page { margin: 0; size: 58mm auto; }
         }
       `}</style>
 
       {/* PRINTABLE RECEIPT TEMPLATE (HIDDEN ON SCREEN) */}
       {receiptToPrint && (
-        <div className="hidden print:block absolute top-0 left-0 bg-white z-[9999] w-[58mm] text-black font-mono text-[11px] leading-tight p-[4mm]">
+        <div id="print-receipt" className="hidden print:block absolute top-0 left-0 bg-white z-[9999] w-[58mm] text-black font-mono text-[11px] leading-tight p-[4mm]">
           <div className="text-center mb-1">
             <div className="font-bold text-[14px]">{receiptSettings.storeName}</div>
             <div style={{ padding: "2px 0 4px 0" }}>{receiptSettings.storeAddress}</div>

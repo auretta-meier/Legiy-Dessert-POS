@@ -223,52 +223,54 @@ function ManagementMenu({
         </button>
       </div>
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="border-b border-stone-200 text-stone-500 text-xs uppercase tracking-widest">
-              <th className="pb-3 font-bold">Product Name</th>
-              <th className="pb-3 font-bold">Category</th>
-              <th className="pb-3 font-bold">Price</th>
-              <th className="pb-3 font-bold">COGS</th>
-              <th className="pb-3 font-bold text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {productList.map((p, idx) => (
-              <tr
-                key={`${p.id}-${idx}`}
-                className="border-b border-stone-100 hover:bg-stone-50"
-              >
-                <td className="py-4 text-sm font-bold text-stone-800">
-                  {p.name}
-                </td>
-                <td className="py-4 text-xs font-semibold text-stone-500">
-                  {p.category}
-                </td>
-                <td className="py-4 text-sm font-mono text-stone-800">
-                  {formatRupiah(p.price)}
-                </td>
-                <td className="py-4 text-sm font-mono text-stone-500">
-                  {formatRupiah(p.cogs)}
-                </td>
-                <td className="py-4 text-right">
-                  <button
-                    onClick={() => openEdit(p)}
-                    className="text-blue-500 hover:underline text-xs font-bold mr-4"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => deleteProduct(p.id)}
-                    className="text-red-500 hover:underline text-xs font-bold"
-                  >
-                    Delete
-                  </button>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse min-w-[550px]">
+            <thead>
+              <tr className="border-b border-stone-200 text-stone-500 text-xs uppercase tracking-widest">
+                <th className="pb-3 font-bold">Product Name</th>
+                <th className="pb-3 font-bold">Category</th>
+                <th className="pb-3 font-bold">Price</th>
+                <th className="pb-3 font-bold">COGS</th>
+                <th className="pb-3 font-bold text-right">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {productList.map((p, idx) => (
+                <tr
+                  key={`${p.id}-${idx}`}
+                  className="border-b border-stone-100 hover:bg-stone-50"
+                >
+                  <td className="py-4 text-sm font-bold text-stone-800 animate-fade-in">
+                    {p.name}
+                  </td>
+                  <td className="py-4 text-xs font-semibold text-stone-500">
+                    {p.category}
+                  </td>
+                  <td className="py-4 text-sm font-mono text-stone-800">
+                    {formatRupiah(p.price)}
+                  </td>
+                  <td className="py-4 text-sm font-mono text-stone-500">
+                    {formatRupiah(p.cogs)}
+                  </td>
+                  <td className="py-4 text-right whitespace-nowrap">
+                    <button
+                      onClick={() => openEdit(p)}
+                      className="text-[#D81B60] hover:underline text-xs font-bold mr-4 inline-block"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => deleteProduct(p.id)}
+                      className="text-red-500 hover:underline text-xs font-bold inline-block"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {isModalOpen && (
@@ -445,87 +447,89 @@ function ManagementHistory({
             </p>
           </div>
         ) : (
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-stone-200 text-stone-500 text-xs uppercase tracking-widest">
-                <th className="pb-3 font-bold">Order ID</th>
-                <th className="pb-3 font-bold">Date & Time</th>
-                <th className="pb-3 font-bold">Customer</th>
-                <th className="pb-3 font-bold">Type</th>
-                <th className="pb-3 font-bold">Payment</th>
-                <th className="pb-3 font-bold text-right">Total Amount</th>
-                <th className="pb-3 font-bold text-center">Receipt</th>
-                <th className="pb-3 font-bold text-center">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedOrderHistory.map((o, idx) => {
-                const displayTotal = typeof o.total === 'number' ? o.total : parseIndonesianNumber(o.total);
-                return (
-                  <tr
-                    key={`${o.orderId}-${idx}`}
-                    className="border-b border-stone-100 hover:bg-stone-50 transition-colors group"
-                  >
-                    <td className="py-4 text-sm font-mono font-bold text-stone-800">
-                      {o.orderId}
-                    </td>
-                    <td className="py-4 text-xs font-semibold text-stone-500">
-                      {new Date(o.timestamp).toLocaleDateString("id-ID")}{" "}
-                      <span className="text-stone-400 ml-1">
-                        {new Date(o.timestamp).toLocaleTimeString("id-ID", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                    </td>
-                    <td className="py-4 text-xs font-bold text-stone-800">
-                      {o.customerName || "-"}
-                    </td>
-                    <td className="py-4 text-xs font-bold text-stone-600">
-                      <span
-                        className={`px-2 py-1 rounded-md ${o.orderType === "Dine-in" ? "bg-blue-50 text-blue-700" : "bg-orange-50 text-orange-700"}`}
-                      >
-                        {o.orderType}
-                      </span>
-                    </td>
-                    <td className="py-4 text-xs font-bold text-stone-600">
-                      {o.paymentMethod}
-                    </td>
-                    <td className="py-4 text-sm font-mono font-bold text-[#D81B60] text-right">
-                      {formatRupiah(displayTotal)}
-                    </td>
-                    <td className="py-4 text-center">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          printReceipt(o);
-                        }}
-                        title="Print Receipt"
-                        className="p-2 text-stone-400 hover:text-[#D81B60] hover:bg-stone-50 rounded-lg transition-colors inline-block"
-                      >
-                        <Printer size={16} />
-                      </button>
-                    </td>
-                    <td className="py-4 text-center">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm(`Yakin ingin menghapus Order ${o.orderId}?`)) {
-                            setOrderHistory((prev: any[]) => prev.filter((x) => x.orderId !== o.orderId));
-                            queueSync("ORDER", "DELETE", { orderId: o.orderId });
-                          }
-                        }}
-                        title="Hapus Order"
-                        className="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100 inline-block"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[650px]">
+              <thead>
+                <tr className="border-b border-stone-200 text-stone-500 text-xs uppercase tracking-widest">
+                  <th className="pb-3 font-bold">Order ID</th>
+                  <th className="pb-3 font-bold">Date & Time</th>
+                  <th className="pb-3 font-bold">Customer</th>
+                  <th className="pb-3 font-bold">Type</th>
+                  <th className="pb-3 font-bold">Payment</th>
+                  <th className="pb-3 font-bold text-right">Total Amount</th>
+                  <th className="pb-3 font-bold text-center">Receipt</th>
+                  <th className="pb-3 font-bold text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedOrderHistory.map((o, idx) => {
+                  const displayTotal = typeof o.total === 'number' ? o.total : parseIndonesianNumber(o.total);
+                  return (
+                    <tr
+                      key={`${o.orderId}-${idx}`}
+                      className="border-b border-stone-100 hover:bg-stone-50 transition-colors group"
+                    >
+                      <td className="py-4 text-sm font-mono font-bold text-stone-800">
+                        {o.orderId}
+                      </td>
+                      <td className="py-4 text-xs font-semibold text-stone-500">
+                        {new Date(o.timestamp).toLocaleDateString("id-ID")}{" "}
+                        <span className="text-stone-400 ml-1">
+                          {new Date(o.timestamp).toLocaleTimeString("id-ID", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      </td>
+                      <td className="py-4 text-xs font-bold text-stone-800">
+                        {o.customerName || "-"}
+                      </td>
+                      <td className="py-4 text-xs font-bold text-stone-600">
+                        <span
+                          className={`px-2 py-1 rounded-md ${o.orderType === "Dine-in" ? "bg-blue-50 text-blue-700" : "bg-orange-50 text-orange-700"}`}
+                        >
+                          {o.orderType}
+                        </span>
+                      </td>
+                      <td className="py-4 text-xs font-bold text-stone-600">
+                        {o.paymentMethod}
+                      </td>
+                      <td className="py-4 text-sm font-mono font-bold text-[#D81B60] text-right">
+                        {formatRupiah(displayTotal)}
+                      </td>
+                      <td className="py-4 text-center">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            printReceipt(o);
+                          }}
+                          title="Print Receipt"
+                          className="p-2 text-stone-400 hover:text-[#D81B60] hover:bg-stone-50 rounded-lg transition-colors inline-block"
+                        >
+                          <Printer size={16} />
+                        </button>
+                      </td>
+                      <td className="py-4 text-center">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm(`Yakin ingin menghapus Order ${o.orderId}?`)) {
+                              setOrderHistory((prev: any[]) => prev.filter((x) => x.orderId !== o.orderId));
+                              queueSync("ORDER", "DELETE", { orderId: o.orderId });
+                            }
+                          }}
+                          title="Hapus Order"
+                          className="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100 inline-block"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
@@ -1115,46 +1119,48 @@ function ManagementCOGS({ productList }: { productList: Product[] }) {
         </h3>
       </div>
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="border-b border-stone-200 text-stone-500 text-xs uppercase tracking-widest">
-              <th className="pb-3 font-bold">Produk</th>
-              <th className="pb-3 font-bold text-right">Harga Jual</th>
-              <th className="pb-3 font-bold text-right">HPP (COGS)</th>
-              <th className="pb-3 font-bold text-right">Margin / Profit</th>
-              <th className="pb-3 font-bold text-right">% Margin</th>
-            </tr>
-          </thead>
-          <tbody>
-            {productList.map((p, idx) => {
-              const profit = p.price - p.cogs;
-              const marginPct =
-                p.price > 0 ? ((profit / p.price) * 100).toFixed(1) : "0";
-              return (
-                <tr
-                  key={`${p.id}-${idx}`}
-                  className="border-b border-stone-100 hover:bg-stone-50"
-                >
-                  <td className="py-4 text-sm font-bold text-stone-800">
-                    {p.name}
-                  </td>
-                  <td className="py-4 text-sm font-mono text-stone-800 text-right">
-                    {formatRupiah(p.price)}
-                  </td>
-                  <td className="py-4 text-sm font-mono text-blue-600 text-right">
-                    {formatRupiah(p.cogs)}
-                  </td>
-                  <td className="py-4 text-sm font-mono font-bold text-emerald-600 text-right">
-                    {formatRupiah(profit)}
-                  </td>
-                  <td className="py-4 text-sm font-mono font-bold text-stone-600 text-right">
-                    {marginPct}%
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse min-w-[600px]">
+            <thead>
+              <tr className="border-b border-stone-200 text-stone-500 text-xs uppercase tracking-widest">
+                <th className="pb-3 font-bold">Produk</th>
+                <th className="pb-3 font-bold text-right">Harga Jual</th>
+                <th className="pb-3 font-bold text-right">HPP (COGS)</th>
+                <th className="pb-3 font-bold text-right">Margin / Profit</th>
+                <th className="pb-3 font-bold text-right">% Margin</th>
+              </tr>
+            </thead>
+            <tbody>
+              {productList.map((p, idx) => {
+                const profit = p.price - p.cogs;
+                const marginPct =
+                  p.price > 0 ? ((profit / p.price) * 100).toFixed(1) : "0";
+                return (
+                  <tr
+                    key={`${p.id}-${idx}`}
+                    className="border-b border-stone-100 hover:bg-stone-50"
+                  >
+                    <td className="py-4 text-sm font-bold text-stone-800">
+                      {p.name}
+                    </td>
+                    <td className="py-4 text-sm font-mono text-stone-800 text-right">
+                      {formatRupiah(p.price)}
+                    </td>
+                    <td className="py-4 text-sm font-mono text-blue-600 text-right">
+                      {formatRupiah(p.cogs)}
+                    </td>
+                    <td className="py-4 text-sm font-mono font-bold text-emerald-600 text-right">
+                      {formatRupiah(profit)}
+                    </td>
+                    <td className="py-4 text-sm font-mono font-bold text-stone-600 text-right">
+                      {marginPct}%
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -1402,6 +1408,7 @@ export default function App() {
   const [orderType, setOrderType] = useState<OrderType>("Dine-in");
   const [customerName, setCustomerName] = useState("");
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
 
   const [syncQueue, setSyncQueue] = useLocalStorage<SyncOperation[]>("legiy_sync_queue", []);
   
@@ -1728,10 +1735,10 @@ export default function App() {
     <div className="flex flex-col h-screen w-screen bg-[#FDFBF7] font-sans text-stone-800 overflow-hidden relative">
       <div className="flex flex-col h-full w-full print:hidden">
       {/* Top Header Bar */}
-      <header className="h-16 flex items-center justify-between px-8 bg-white border-b border-stone-200 shadow-sm shrink-0 print:hidden z-10">
-        <div className="flex items-center gap-10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-white border border-stone-200 rounded-lg flex items-center justify-center drop-shadow-sm overflow-hidden shrink-0">
+      <header className="h-16 flex items-center justify-between px-3 sm:px-8 bg-white border-b border-stone-200 shadow-sm shrink-0 print:hidden z-10">
+        <div className="flex items-center gap-2 sm:gap-10">
+          <div className="flex items-center gap-1.5 sm:gap-3">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white border border-stone-200 rounded-lg flex items-center justify-center drop-shadow-sm overflow-hidden shrink-0">
               {/* PASTE_BASE64_LOGO_DISINI */}
               {/* Ganti atribut src di bawah ini dengan string Base64 gambar Anda */}
               <img
@@ -1741,39 +1748,39 @@ export default function App() {
               />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-[#5D4037]">
+              <h1 className="text-sm sm:text-xl font-bold tracking-tight text-[#5D4037]">
                 Legiy <span className="text-[#D81B60]">Dessert</span>
               </h1>
-              <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest leading-none mt-0.5">
+              <p className="hidden sm:block text-[10px] text-stone-400 font-bold uppercase tracking-widest leading-none mt-0.5">
                 Premium Home Cafe
               </p>
             </div>
           </div>
 
-          <div className="hidden sm:flex items-center bg-stone-100 p-1.5 rounded-full">
+          <div className="flex items-center bg-stone-100 p-1 rounded-full scale-90 sm:scale-100 origin-left">
             <button
               onClick={() => setViewMode("POS")}
-              className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${viewMode === "POS" ? "bg-white shadow-sm text-[#D81B60]" : "text-stone-500 hover:text-stone-700"}`}
+              className={`px-3 sm:px-5 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-bold transition-all ${viewMode === "POS" ? "bg-white shadow-sm text-[#D81B60]" : "text-stone-500 hover:text-stone-700"}`}
             >
               Kasir
             </button>
             <button
               onClick={() => setViewMode("MANAGEMENT")}
-              className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${viewMode === "MANAGEMENT" ? "bg-white shadow-sm text-[#D81B60]" : "text-stone-500 hover:text-stone-700"}`}
+              className={`px-3 sm:px-5 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-bold transition-all ${viewMode === "MANAGEMENT" ? "bg-white shadow-sm text-[#D81B60]" : "text-stone-500 hover:text-stone-700"}`}
             >
               Management
             </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-2 sm:gap-6">
           {syncStatus && (
-            <div className="hidden sm:flex items-center gap-2 text-xs text-stone-500 bg-stone-100 px-3 py-1.5 rounded-full">
-              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-              {syncStatus}
+            <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-stone-500 bg-stone-100 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full">
+              <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-blue-500 animate-pulse"></span>
+              <span className="hidden xs:inline">{syncStatus}</span>
             </div>
           )}
-          <div className="text-right hidden sm:block">
+          <div className="text-right hidden md:block">
             <p className="text-sm font-semibold">Legiy System</p>
             <p className="text-[10px] text-stone-400 uppercase font-black tracking-widest">
               {viewMode === "POS" ? "POS Module" : "Admin Module"}

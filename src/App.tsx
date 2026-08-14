@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { products, formatRupiah, Category, Product, initialCategories } from "./data";
 import { syncToGoogleSheets, fetchFromGoogleSheets } from "./googleSheetsService";
+import { QRCodeCanvas } from "qrcode.react";
+import { STORE_LOGO } from "./logo";
 
 function useLocalStorage<T>(key: string, initialValue: T) {
   const [storedValue, setStoredValue] = useState<T>(() => {
@@ -1285,77 +1287,247 @@ export interface CartItem extends Product {
 function ManagementSettings({
   receiptSettings,
   setReceiptSettings,
+  onTestPrint,
 }: {
   receiptSettings: any;
   setReceiptSettings: any;
+  onTestPrint?: () => void;
 }) {
   return (
-    <div className="p-6 h-full flex flex-col">
-      <div className="flex items-center mb-6">
-        <h3 className="text-lg font-bold text-stone-800">
-          Pengaturan Struk (Receipt)
-        </h3>
+    <div className="p-4 sm:p-6 h-full flex flex-col">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+        <div>
+          <h3 className="text-lg font-bold text-stone-800">
+            Pengaturan Struk (Receipt 80mm)
+          </h3>
+          <p className="text-xs text-stone-500 mt-0.5">
+            Sesuaikan informasi kop toko, kontak, footer, dan QR Code untuk printer thermal 80mm.
+          </p>
+        </div>
+        {onTestPrint && (
+          <button
+            onClick={onTestPrint}
+            className="self-start sm:self-auto bg-[#D81B60] hover:brightness-110 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition-all"
+          >
+            <Printer size={15} /> Cetak Struk Uji Coba (Test Print)
+          </button>
+        )}
       </div>
-      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 max-w-xl">
-        <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 shadow-sm flex flex-col gap-4">
+
+      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Form Settings */}
+        <div className="lg:col-span-7 bg-stone-50 p-5 rounded-2xl border border-stone-200 shadow-sm flex flex-col gap-4">
           <div>
-            <label className="block text-xs font-bold text-stone-500 mb-1">
-              Nama Toko / Store Name
+            <label className="block text-xs font-bold text-stone-600 mb-1">
+              Nama Toko / Brand
             </label>
             <input
               type="text"
-              value={receiptSettings.storeName}
+              value={receiptSettings.storeName || ""}
               onChange={(e) =>
                 setReceiptSettings({ ...receiptSettings, storeName: e.target.value })
               }
-              className="w-full text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#D81B60]"
-              placeholder="Misal: LEGIY DESSERT & COFFEE"
+              className="w-full text-sm p-3 rounded-xl border border-stone-200 bg-white outline-none focus:border-[#D81B60] font-bold text-stone-800"
+              placeholder="Legiy's Dessert"
             />
           </div>
-          <div>
-            <label className="block text-xs font-bold text-stone-500 mb-1">
-              Alamat Toko
-            </label>
-            <textarea
-              value={receiptSettings.storeAddress}
-              onChange={(e) =>
-                setReceiptSettings({ ...receiptSettings, storeAddress: e.target.value })
-              }
-              rows={2}
-              className="w-full text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#D81B60]"
-              placeholder="Alamat toko yang akan dicetak di struk"
-            />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-stone-600 mb-1">
+                Alamat Toko
+              </label>
+              <textarea
+                value={receiptSettings.storeAddress || ""}
+                onChange={(e) =>
+                  setReceiptSettings({ ...receiptSettings, storeAddress: e.target.value })
+                }
+                rows={2}
+                className="w-full text-sm p-3 rounded-xl border border-stone-200 bg-white outline-none focus:border-[#D81B60]"
+                placeholder="Perumahan TSI, Blok O.14, Cirebon"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-stone-600 mb-1">
+                Nomor Telepon / WhatsApp
+              </label>
+              <input
+                type="text"
+                value={receiptSettings.storePhone || ""}
+                onChange={(e) =>
+                  setReceiptSettings({ ...receiptSettings, storePhone: e.target.value })
+                }
+                className="w-full text-sm p-3 rounded-xl border border-stone-200 bg-white outline-none focus:border-[#D81B60]"
+                placeholder="0812-1252-7520"
+              />
+              <p className="text-[10px] text-stone-400 mt-1">Dicetak di bawah alamat toko</p>
+            </div>
           </div>
+
           <div>
-            <label className="block text-xs font-bold text-stone-500 mb-1">
-              Footer / Pesan Terima Kasih (Baris 1)
+            <label className="block text-xs font-bold text-stone-600 mb-1">
+              Link QR Code (Linktree / Medsos)
             </label>
             <input
               type="text"
-              value={receiptSettings.footerText1}
+              value={receiptSettings.qrCodeUrl || ""}
               onChange={(e) =>
-                setReceiptSettings({ ...receiptSettings, footerText1: e.target.value })
+                setReceiptSettings({ ...receiptSettings, qrCodeUrl: e.target.value })
               }
-              className="w-full text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#D81B60]"
-              placeholder="Misal: Suka dessert-nya?"
+              className="w-full text-sm p-3 rounded-xl border border-stone-200 bg-white outline-none focus:border-[#D81B60] font-mono text-xs text-blue-600"
+              placeholder="https://linktr.ee/legiy_dessert"
             />
+            <p className="text-[10px] text-stone-400 mt-1">QR Code akan otomatis dibuat dan dicetak di bagian bawah struk</p>
           </div>
-          <div>
-            <label className="block text-xs font-bold text-stone-500 mb-1">
-              Footer / Pesan Terima Kasih (Baris 2)
-            </label>
-            <input
-              type="text"
-              value={receiptSettings.footerText2}
-              onChange={(e) =>
-                setReceiptSettings({ ...receiptSettings, footerText2: e.target.value })
-              }
-              className="w-full text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#D81B60]"
-              placeholder="Misal: Yuk, tag Instagram kami di @legiy.dessert"
-            />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-stone-600 mb-1">
+                Footer / Pesan Baris 1
+              </label>
+              <input
+                type="text"
+                value={receiptSettings.footerText1 || ""}
+                onChange={(e) =>
+                  setReceiptSettings({ ...receiptSettings, footerText1: e.target.value })
+                }
+                className="w-full text-sm p-3 rounded-xl border border-stone-200 bg-white outline-none focus:border-[#D81B60]"
+                placeholder="Terima kasih atas kunjungannya!"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-stone-600 mb-1">
+                Footer / Pesan Baris 2
+              </label>
+              <input
+                type="text"
+                value={receiptSettings.footerText2 || ""}
+                onChange={(e) =>
+                  setReceiptSettings({ ...receiptSettings, footerText2: e.target.value })
+                }
+                className="w-full text-sm p-3 rounded-xl border border-stone-200 bg-white outline-none focus:border-[#D81B60]"
+                placeholder="Manisnya pas, bikin harimu lebih ceria :)"
+              />
+            </div>
           </div>
-          <div className="mt-4 bg-blue-50 text-blue-800 p-3 rounded-xl text-xs font-medium border border-blue-100">
-            Perubahan otomatis tersimpan dan akan langsung digunakan pada pencetakan struk berikutnya.
+
+          <div className="mt-2 bg-pink-50/70 border border-pink-100 text-stone-700 p-3.5 rounded-xl text-xs flex items-center gap-2.5">
+            <CheckCircle size={16} className="text-[#D81B60] flex-shrink-0" />
+            <span>Format telah disesuaikan untuk printer <strong>Thermal 80mm</strong>. Semua perubahan langsung tersimpan otomatis.</span>
+          </div>
+        </div>
+
+        {/* Live Preview Card (80mm style) */}
+        <div className="lg:col-span-5 flex flex-col items-center">
+          <div className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+            <span>Pratinjau Struk (80mm Width)</span>
+          </div>
+          <div className="bg-white border-2 border-stone-300 shadow-lg rounded-xl p-5 w-full max-w-[340px] text-black font-mono text-[11px] leading-relaxed select-none">
+            {/* Header */}
+            <div className="text-center pb-2">
+              <img
+                src={STORE_LOGO}
+                alt="Logo"
+                className="w-14 h-14 mx-auto mb-1.5 object-contain"
+              />
+              <div className="font-bold text-[14px] uppercase tracking-wider text-black">
+                {receiptSettings.storeName || "Legiy's Dessert"}
+              </div>
+              <div className="text-[10px] text-stone-600 mt-0.5">
+                {receiptSettings.storeAddress || "Perumahan TSI, Blok O.14, Cirebon"}
+              </div>
+              <div className="text-[10px] font-bold text-stone-800 mt-0.5">
+                {receiptSettings.storePhone || "0812-1252-7520"}
+              </div>
+            </div>
+
+            <div className="border-b border-dashed border-stone-400 my-2"></div>
+
+            {/* Info */}
+            <div className="text-[10px] space-y-0.5 text-stone-700">
+              <div className="flex justify-between">
+                <span>No. Struk</span>
+                <span className="font-bold text-black">LGY-892104</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Tanggal</span>
+                <span>{new Date().toLocaleDateString("id-ID")} {new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Customer</span>
+                <span className="font-bold text-black">Kak Amanda</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Tipe Pesanan</span>
+                <span className="font-bold text-black">Dine-in</span>
+              </div>
+            </div>
+
+            <div className="border-b border-dashed border-stone-400 my-2"></div>
+
+            {/* Sample items */}
+            <div className="space-y-1.5 text-[10.5px]">
+              <div>
+                <div className="font-bold text-black">Pistachio Crepe Cake</div>
+                <div className="flex justify-between text-stone-600">
+                  <span>1 x 38.000</span>
+                  <span className="font-bold text-black">38.000</span>
+                </div>
+              </div>
+              <div>
+                <div className="font-bold text-black">Iced Caramel Macchiato</div>
+                <div className="flex justify-between text-stone-600">
+                  <span>2 x 25.000</span>
+                  <span className="font-bold text-black">50.000</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-b border-dashed border-stone-400 my-2"></div>
+
+            {/* Totals */}
+            <div className="space-y-1 text-[10.5px]">
+              <div className="flex justify-between">
+                <span>Subtotal</span>
+                <span>88.000</span>
+              </div>
+              <div className="border-b border-dashed border-stone-300 my-1"></div>
+              <div className="flex justify-between font-black text-[13px] text-black pt-0.5">
+                <span>TOTAL</span>
+                <span>Rp 88.000</span>
+              </div>
+              <div className="flex justify-between pt-1 text-stone-700">
+                <span>Bayar (QRIS)</span>
+                <span>88.000</span>
+              </div>
+            </div>
+
+            <div className="border-b border-dashed border-stone-400 my-2.5"></div>
+
+            {/* Footer & QR Code */}
+            <div className="text-center pt-1 flex flex-col items-center">
+              <div className="text-[10px] text-stone-600 mb-0.5">
+                {receiptSettings.footerText1 || "Terima kasih atas kunjungannya!"}
+              </div>
+              <div className="text-[10px] font-bold text-stone-800 mb-2">
+                {receiptSettings.footerText2 || "Manisnya pas, bikin harimu lebih ceria :)"}
+              </div>
+
+              {/* QR Code */}
+              <div className="bg-white p-1.5 rounded-lg border border-stone-200 inline-block shadow-sm">
+                <QRCodeCanvas
+                  value={receiptSettings.qrCodeUrl || "https://linktr.ee/legiy_dessert"}
+                  size={80}
+                  level="M"
+                />
+              </div>
+              <div className="text-[9px] font-bold text-stone-500 mt-1.5 uppercase tracking-wider">
+                Scan di sini untuk Linktree & Menu
+              </div>
+              <div className="text-[9px] text-blue-600 mt-0.5 break-all">
+                {receiptSettings.qrCodeUrl || "https://linktr.ee/legiy_dessert"}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1413,10 +1585,12 @@ export default function App() {
   const [syncQueue, setSyncQueue] = useLocalStorage<SyncOperation[]>("legiy_sync_queue", []);
   
   const [receiptSettings, setReceiptSettings] = useLocalStorage("legiy_receipt_settings", {
-    storeName: "LEGIY DESSERT & COFFEE",
-    storeAddress: "Puri Indah Mall, Jakarta Barat",
-    footerText1: "Manisnya pas, kayak senyum kamu hari ini :)",
-    footerText2: "Yuk, tag Instagram kami di @legiy.dessert"
+    storeName: "Legiy's Dessert",
+    storeAddress: "Perumahan TSI, Blok O.14, Cirebon",
+    storePhone: "0812-1252-7520",
+    qrCodeUrl: "https://linktr.ee/legiy_dessert",
+    footerText1: "Terima kasih atas kunjungannya!",
+    footerText2: "Manisnya pas, bikin harimu lebih ceria :)"
   });
 
   const [receiptToPrint, setReceiptToPrint] = useState<any>(null);
@@ -2388,10 +2562,15 @@ export default function App() {
             {/* Receipt Content */}
             <div className="p-8 pb-4" id="receipt-content">
               <div className="text-center mb-6 border-b-2 border-dashed border-stone-200 pb-6">
+                <div className="flex justify-center mb-3">
+                  <div className="w-16 h-16 bg-white border border-stone-200 rounded-xl flex items-center justify-center p-1 shadow-sm">
+                    <img src={STORE_LOGO} alt="Logo" className="w-full h-full object-contain" />
+                  </div>
+                </div>
                 {isEditingReceipt ? (
                   <div className="space-y-1.5">
                     <div>
-                      <label className="text-[9px] font-bold text-[#D81B60] block uppercase tracking-wider">Nama Toko</label>
+                      <label className="text-[9px] font-bold text-[#D81B60] block uppercase tracking-wider text-left">Nama Toko</label>
                       <input
                         type="text"
                         className="text-center font-bold text-sm text-stone-800 p-1.5 border rounded-lg w-full outline-none focus:border-[#D81B60] focus:ring-1 focus:ring-[#D81B60]"
@@ -2400,7 +2579,7 @@ export default function App() {
                       />
                     </div>
                     <div>
-                      <label className="text-[9px] font-bold text-[#D81B60] block uppercase tracking-wider">Alamat Toko</label>
+                      <label className="text-[9px] font-bold text-[#D81B60] block uppercase tracking-wider text-left">Alamat Toko</label>
                       <input
                         type="text"
                         className="text-center text-xs text-stone-500 p-1.5 border rounded-lg w-full outline-none focus:border-[#D81B60] focus:ring-1 focus:ring-[#D81B60]"
@@ -2408,14 +2587,26 @@ export default function App() {
                         onChange={(e) => setReceiptSettings({ ...receiptSettings, storeAddress: e.target.value })}
                       />
                     </div>
+                    <div>
+                      <label className="text-[9px] font-bold text-[#D81B60] block uppercase tracking-wider text-left">No. Telepon / WA</label>
+                      <input
+                        type="text"
+                        className="text-center text-xs font-semibold text-stone-700 p-1.5 border rounded-lg w-full outline-none focus:border-[#D81B60] focus:ring-1 focus:ring-[#D81B60]"
+                        value={receiptSettings.storePhone || ""}
+                        onChange={(e) => setReceiptSettings({ ...receiptSettings, storePhone: e.target.value })}
+                      />
+                    </div>
                   </div>
                 ) : (
                   <>
-                    <h1 className="text-xl font-bold text-stone-800 tracking-tight mb-1">
+                    <h1 className="text-xl font-bold text-stone-800 tracking-tight mb-0.5">
                       {receiptSettings.storeName}
                     </h1>
                     <p className="text-xs text-stone-500 font-medium">
                       {receiptSettings.storeAddress}
+                    </p>
+                    <p className="text-xs text-stone-600 font-semibold mt-0.5">
+                      {receiptSettings.storePhone || "0812-1252-7520"}
                     </p>
                   </>
                 )}
@@ -2530,9 +2721,9 @@ export default function App() {
                 )}
               </div>
 
-              <div className="text-center mt-10 text-xs text-stone-400 font-medium space-y-1">
+              <div className="text-center mt-8 text-xs text-stone-400 font-medium space-y-1">
                 {isEditingReceipt ? (
-                  <div className="space-y-1.5 border-t border-dashed border-stone-200 pt-3">
+                  <div className="space-y-2 border-t border-dashed border-stone-200 pt-3">
                     <div>
                       <label className="text-[9px] font-bold text-[#D81B60] block uppercase tracking-wider text-left">Pesan Kaki 1</label>
                       <input
@@ -2546,9 +2737,18 @@ export default function App() {
                       <label className="text-[9px] font-bold text-[#D81B60] block uppercase tracking-wider text-left">Pesan Kaki 2</label>
                       <input
                         type="text"
-                        className="text-center text-xs font-bold text-stone-700 p-1.5 border rounded-lg w-full mt-1 outline-none focus:border-[#D81B60]"
+                        className="text-center text-xs font-bold text-stone-700 p-1.5 border rounded-lg w-full outline-none focus:border-[#D81B60]"
                         value={receiptSettings.footerText2}
                         onChange={(e) => setReceiptSettings({ ...receiptSettings, footerText2: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-bold text-[#D81B60] block uppercase tracking-wider text-left">Link QR Code (Linktree/Sosmed)</label>
+                      <input
+                        type="text"
+                        className="text-center text-xs text-blue-600 p-1.5 border rounded-lg w-full outline-none focus:border-[#D81B60]"
+                        value={receiptSettings.qrCodeUrl || "https://linktr.ee/legiy_dessert"}
+                        onChange={(e) => setReceiptSettings({ ...receiptSettings, qrCodeUrl: e.target.value })}
                       />
                     </div>
                   </div>
@@ -2558,6 +2758,17 @@ export default function App() {
                     <p className="font-bold mt-1 text-stone-700 tracking-wider">
                       {receiptSettings.footerText2}
                     </p>
+                    <div className="flex flex-col items-center justify-center mt-4 pt-3 border-t border-dashed border-stone-200">
+                      <div className="bg-white p-2 border border-stone-200 rounded-xl shadow-sm">
+                        <QRCodeCanvas
+                          value={receiptSettings.qrCodeUrl || "https://linktr.ee/legiy_dessert"}
+                          size={84}
+                          level="M"
+                        />
+                      </div>
+                      <p className="text-[10px] font-bold text-stone-600 mt-2">Scan untuk Menu & Sosmed</p>
+                      <p className="text-[9px] text-[#D81B60] font-medium tracking-tight">linktr.ee/legiy_dessert</p>
+                    </div>
                   </>
                 )}
               </div>
@@ -2637,64 +2848,145 @@ export default function App() {
             position: absolute !important;
             left: 0 !important;
             top: 0 !important;
-            width: 58mm !important;
+            width: 80mm !important;
+            max-width: 80mm !important;
             display: block !important;
-            padding: 4mm !important;
+            padding: 5mm 6mm !important;
             box-sizing: border-box !important;
             color: black !important;
-            font-family: monospace !important;
-            font-size: 11px !important;
-            line-height: 1.2 !important;
+            font-family: 'Courier New', Courier, monospace !important;
+            font-size: 12px !important;
+            line-height: 1.3 !important;
             background: white !important;
           }
-          @page { margin: 0; size: 58mm auto; }
+          @page {
+            margin: 0;
+            size: 80mm auto;
+          }
         }
       `}</style>
 
-      {/* PRINTABLE RECEIPT TEMPLATE (HIDDEN ON SCREEN) */}
+      {/* PRINTABLE RECEIPT TEMPLATE FOR 80MM (HIDDEN ON SCREEN) */}
       {receiptToPrint && (
-        <div id="print-receipt" className="hidden print:block absolute top-0 left-0 bg-white z-[9999] w-[58mm] text-black font-mono text-[11px] leading-tight p-[4mm]">
-          <div className="text-center mb-1">
-            <div className="font-bold text-[14px]">{receiptSettings.storeName}</div>
-            <div style={{ padding: "2px 0 4px 0" }}>{receiptSettings.storeAddress}</div>
+        <div id="print-receipt" className="hidden print:block absolute top-0 left-0 bg-white z-[9999] w-[80mm] text-black font-mono text-[12px] leading-snug p-[5mm]">
+          {/* Header Kop */}
+          <div className="text-center mb-2">
+            <div className="flex justify-center mb-1.5">
+              <img
+                src={STORE_LOGO}
+                alt="Logo"
+                className="w-16 h-16 object-contain grayscale contrast-200"
+                style={{ imageRendering: "pixelated" }}
+              />
+            </div>
+            <div className="font-bold text-[16px] tracking-tight">{receiptSettings.storeName}</div>
+            <div className="text-[11px] leading-tight mt-0.5">{receiptSettings.storeAddress}</div>
+            <div className="text-[11px] leading-tight font-medium mt-0.5">{receiptSettings.storePhone || "0812-1252-7520"}</div>
           </div>
-          <div className="border-b border-dashed border-black my-1"></div>
-          <div>No: {receiptToPrint.orderId}</div>
-          <div>Customer: {receiptToPrint.customerName || "-"}</div>
-          <div>TGL: {new Date(receiptToPrint.timestamp).toLocaleDateString("id-ID")} {new Date(receiptToPrint.timestamp).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</div>
-          <div>Tipe: {receiptToPrint.orderType}</div>
-          <div className="border-b border-dashed border-black my-1"></div>
-          
-          {receiptToPrint.cartSnapshot && receiptToPrint.cartSnapshot.map((item: any, idx: number) => (
-            <div key={idx} className="mb-1">
-              <div className="font-bold truncate">{item.name}</div>
-              <div className="flex justify-between">
-                <span>{item.quantity} x {item.price.toLocaleString("id-ID")}</span>
-                <span>{(item.price * item.quantity).toLocaleString("id-ID")}</span>
-              </div>
-            </div>
-          ))}
 
-          {!receiptToPrint.cartSnapshot && receiptToPrint.items && typeof receiptToPrint.items === 'string' && (
-            <div className="mb-1 whitespace-pre-wrap">
-              {receiptToPrint.items}
+          <div className="border-b-2 border-dashed border-black my-2"></div>
+
+          {/* Order Details */}
+          <div className="space-y-0.5 text-[11px]">
+            <div className="flex justify-between">
+              <span>No. Order :</span>
+              <span className="font-bold">{receiptToPrint.orderId}</span>
             </div>
-          )}
-          
-          <div className="border-b border-dashed border-black my-1"></div>
-          <div className="flex justify-between"><span>Subtotal</span><span>{receiptToPrint.subtotal.toLocaleString("id-ID")}</span></div>
-          {receiptToPrint.discount ? <div className="flex justify-between"><span>Diskon</span><span>-{receiptToPrint.discount.toLocaleString("id-ID")}</span></div> : null}
-          {receiptToPrint.tax > 0 ? <div className="flex justify-between"><span>PB1</span><span>{receiptToPrint.tax.toLocaleString("id-ID")}</span></div> : null}
-          <div className="border-b border-dashed border-black my-1"></div>
-          <div className="flex justify-between font-bold text-[13px]"><span>TOTAL</span><span>{receiptToPrint.total.toLocaleString("id-ID")}</span></div>
-          <div className="flex justify-between mt-1"><span>Pay ({receiptToPrint.paymentMethod})</span><span>{receiptToPrint.cashGiven.toLocaleString("id-ID")}</span></div>
-          {receiptToPrint.paymentMethod === "Cash" && (
-            <div className="flex justify-between"><span>Kembalian</span><span>{receiptToPrint.change.toLocaleString("id-ID")}</span></div>
-          )}
-          <div className="border-b border-dashed border-black my-2"></div>
-          <div className="text-center mt-2">
-            <div className="mb-1">{receiptSettings.footerText1}</div>
-            <div className="mb-1">{receiptSettings.footerText2}</div>
+            <div className="flex justify-between">
+              <span>Customer   :</span>
+              <span className="font-bold">{receiptToPrint.customerName || "-"}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Tanggal    :</span>
+              <span>
+                {new Date(receiptToPrint.timestamp).toLocaleDateString("id-ID")}{" "}
+                {new Date(receiptToPrint.timestamp).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Tipe Order :</span>
+              <span className="font-bold">{receiptToPrint.orderType}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Metode     :</span>
+              <span>{receiptToPrint.paymentMethod}</span>
+            </div>
+          </div>
+
+          <div className="border-b-2 border-dashed border-black my-2"></div>
+
+          {/* Item List */}
+          <div className="space-y-1.5 my-1">
+            {receiptToPrint.cartSnapshot && receiptToPrint.cartSnapshot.map((item: any, idx: number) => (
+              <div key={idx} className="text-[12px]">
+                <div className="font-bold leading-tight">{item.name}</div>
+                <div className="flex justify-between text-[11px] pl-2">
+                  <span>{item.quantity} x {Number(item.price).toLocaleString("id-ID")}</span>
+                  <span className="font-bold">{Number(item.price * item.quantity).toLocaleString("id-ID")}</span>
+                </div>
+              </div>
+            ))}
+
+            {!receiptToPrint.cartSnapshot && receiptToPrint.items && typeof receiptToPrint.items === 'string' && (
+              <div className="whitespace-pre-wrap text-[11px]">
+                {receiptToPrint.items}
+              </div>
+            )}
+          </div>
+
+          <div className="border-b-2 border-dashed border-black my-2"></div>
+
+          {/* Totals */}
+          <div className="space-y-1 text-[12px]">
+            <div className="flex justify-between">
+              <span>Subtotal</span>
+              <span>{Number(receiptToPrint.subtotal).toLocaleString("id-ID")}</span>
+            </div>
+            {receiptToPrint.discount ? (
+              <div className="flex justify-between">
+                <span>Diskon</span>
+                <span>-{Number(receiptToPrint.discount).toLocaleString("id-ID")}</span>
+              </div>
+            ) : null}
+            {receiptToPrint.tax > 0 ? (
+              <div className="flex justify-between">
+                <span>PB1</span>
+                <span>{Number(receiptToPrint.tax).toLocaleString("id-ID")}</span>
+              </div>
+            ) : null}
+            <div className="border-b border-dashed border-black my-1"></div>
+            <div className="flex justify-between font-black text-[15px] pt-0.5">
+              <span>TOTAL</span>
+              <span>Rp {Number(receiptToPrint.total).toLocaleString("id-ID")}</span>
+            </div>
+            <div className="flex justify-between mt-1 text-[11px]">
+              <span>Bayar ({receiptToPrint.paymentMethod})</span>
+              <span>{Number(receiptToPrint.cashGiven).toLocaleString("id-ID")}</span>
+            </div>
+            {receiptToPrint.paymentMethod === "Cash" && (
+              <div className="flex justify-between text-[11px]">
+                <span>Kembalian</span>
+                <span>{Number(receiptToPrint.change).toLocaleString("id-ID")}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="border-b-2 border-dashed border-black my-2.5"></div>
+
+          {/* Footer Messages & QR Code */}
+          <div className="text-center space-y-1 mt-2">
+            <div className="font-medium text-[11px]">{receiptSettings.footerText1}</div>
+            <div className="font-bold text-[12px]">{receiptSettings.footerText2}</div>
+
+            <div className="flex flex-col items-center justify-center mt-3 pt-2">
+              <QRCodeCanvas
+                value={receiptSettings.qrCodeUrl || "https://linktr.ee/legiy_dessert"}
+                size={86}
+                level="M"
+              />
+              <div className="text-[10px] font-bold mt-1.5">Scan untuk Menu & Sosmed</div>
+              <div className="text-[9px]">linktr.ee/legiy_dessert</div>
+            </div>
           </div>
         </div>
       )}

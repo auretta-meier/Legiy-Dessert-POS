@@ -210,60 +210,64 @@ function ManagementMenu({
   return (
     <div className="p-6 h-full flex flex-col relative">
       <div className="flex justify-between items-center mb-6">
-        <h3 className="text-lg font-bold text-stone-800">Product Menu</h3>
-        <button
-          onClick={openAdd}
-          className="bg-[#D81B60] text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2"
-        >
-          <Plus size={16} /> Add Product
-        </button>
-        <button
-          onClick={() => setIsCategoryModalOpen(true)}
-          className="bg-white border hover:bg-stone-50 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors ml-2"
-        >
-           Manage Categories
-        </button>
+        <h3 className="text-xl font-black text-stone-900">Product Menu</h3>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={openAdd}
+            className="bg-[#D81B60] hover:bg-[#C2185B] text-white px-4 py-2 rounded-xl text-sm font-black flex items-center gap-2 shadow-xs transition-colors"
+          >
+            <Plus size={16} strokeWidth={3} /> Add Product
+          </button>
+          <button
+            onClick={() => setIsCategoryModalOpen(true)}
+            className="bg-white border-2 border-stone-200 hover:bg-stone-50 hover:border-stone-300 text-stone-800 px-4 py-2 rounded-xl text-sm font-black flex items-center gap-2 transition-colors"
+          >
+             Manage Categories
+          </button>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[550px]">
             <thead>
-              <tr className="border-b border-stone-200 text-stone-500 text-xs uppercase tracking-widest">
-                <th className="pb-3 font-bold">Product Name</th>
-                <th className="pb-3 font-bold">Category</th>
-                <th className="pb-3 font-bold">Price</th>
-                <th className="pb-3 font-bold">COGS</th>
-                <th className="pb-3 font-bold text-right">Actions</th>
+              <tr className="border-b-2 border-stone-200 text-stone-700 text-xs uppercase tracking-wider">
+                <th className="pb-3 font-black">Product Name</th>
+                <th className="pb-3 font-black">Category</th>
+                <th className="pb-3 font-black">Price</th>
+                <th className="pb-3 font-black">COGS</th>
+                <th className="pb-3 font-black text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {productList.map((p, idx) => (
                 <tr
                   key={`${p.id}-${idx}`}
-                  className="border-b border-stone-100 hover:bg-stone-50"
+                  className="border-b border-stone-100 hover:bg-stone-50/80 transition-colors"
                 >
-                  <td className="py-4 text-sm font-bold text-stone-800 animate-fade-in">
+                  <td className="py-4 text-sm font-black text-stone-900">
                     {p.name}
                   </td>
-                  <td className="py-4 text-xs font-semibold text-stone-500">
-                    {p.category}
+                  <td className="py-4 text-xs font-bold text-stone-600">
+                    <span className="px-2.5 py-1 bg-stone-100 border border-stone-200 rounded-md">
+                      {p.category}
+                    </span>
                   </td>
-                  <td className="py-4 text-sm font-mono text-stone-800">
+                  <td className="py-4 text-sm font-mono font-black text-[#D81B60]">
                     {formatRupiah(p.price)}
                   </td>
-                  <td className="py-4 text-sm font-mono text-stone-500">
+                  <td className="py-4 text-sm font-mono font-bold text-stone-600">
                     {formatRupiah(p.cogs)}
                   </td>
                   <td className="py-4 text-right whitespace-nowrap">
                     <button
                       onClick={() => openEdit(p)}
-                      className="text-[#D81B60] hover:underline text-xs font-bold mr-4 inline-block"
+                      className="text-[#D81B60] hover:text-[#AD1457] hover:underline text-xs font-black mr-4 inline-block"
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => deleteProduct(p.id)}
-                      className="text-red-500 hover:underline text-xs font-bold inline-block"
+                      className="text-red-600 hover:text-red-800 hover:underline text-xs font-black inline-block"
                     >
                       Delete
                     </button>
@@ -1924,10 +1928,10 @@ export default function App() {
     <div id="root-container" className="flex flex-col h-screen w-screen bg-[#FDFBF7] font-sans text-stone-800 overflow-hidden relative">
       <div className="flex flex-col h-full w-full print:hidden">
       {/* Top Header Bar */}
-      <header className="h-16 sm:h-20 flex items-center justify-between px-3 sm:px-8 bg-white border-b border-stone-200 shadow-sm shrink-0 print:hidden z-10">
+      <header className="h-16 sm:h-20 flex items-center justify-between px-3 sm:px-8 bg-white border-b-2 border-stone-200 shadow-xs shrink-0 print:hidden z-10">
         <div className="flex items-center gap-2 sm:gap-10">
           <div className="flex items-center gap-2 sm:gap-4">
-            <div className="h-12 sm:h-16 w-24 sm:w-36 bg-white border border-stone-200 rounded-xl flex items-center justify-center p-1.5 shadow-xs overflow-hidden shrink-0">
+            <div className="h-12 sm:h-16 w-24 sm:w-36 bg-white border-2 border-pink-100 rounded-xl flex items-center justify-center p-1.5 shadow-xs overflow-hidden shrink-0">
               <img
                 src={STORE_LOGO}
                 alt="Legiy's Dessert Logo"
@@ -1935,24 +1939,32 @@ export default function App() {
               />
             </div>
             <div>
-              <h1 className="text-base sm:text-2xl font-extrabold tracking-tight text-stone-800 flex items-center gap-1.5 leading-tight">
+              <h1 className="text-base sm:text-2xl font-black tracking-tight text-stone-900 flex items-center gap-1.5 leading-tight">
                 Legiy <span className="text-[#D81B60]">Dessert</span>
               </h1>
-              <p className="hidden sm:block text-[11px] sm:text-xs text-stone-500 font-semibold tracking-wider uppercase">
+              <p className="hidden sm:block text-[11px] sm:text-xs text-stone-600 font-bold tracking-wider uppercase">
                 Premium Home Cafe
               </p>
             </div>
           </div>
-          <div className="flex items-center bg-stone-100 p-1 rounded-full scale-90 sm:scale-100 origin-left">
+          <div className="flex items-center bg-stone-100 p-1 rounded-full border border-stone-200 scale-90 sm:scale-100 origin-left">
             <button
               onClick={() => setViewMode("POS")}
-              className={`px-3 sm:px-5 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-bold transition-all ${viewMode === "POS" ? "bg-white shadow-sm text-[#D81B60]" : "text-stone-500 hover:text-stone-700"}`}
+              className={`px-3.5 sm:px-5 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-black transition-all ${
+                viewMode === "POS" 
+                  ? "bg-[#D81B60] text-white shadow-md" 
+                  : "text-stone-700 hover:text-stone-900 hover:bg-stone-200/50"
+              }`}
             >
               Kasir
             </button>
             <button
               onClick={() => setViewMode("MANAGEMENT")}
-              className={`px-3 sm:px-5 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-bold transition-all ${viewMode === "MANAGEMENT" ? "bg-white shadow-sm text-[#D81B60]" : "text-stone-500 hover:text-stone-700"}`}
+              className={`px-3.5 sm:px-5 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-black transition-all ${
+                viewMode === "MANAGEMENT" 
+                  ? "bg-[#D81B60] text-white shadow-md" 
+                  : "text-stone-700 hover:text-stone-900 hover:bg-stone-200/50"
+              }`}
             >
               Management
             </button>
@@ -1961,14 +1973,14 @@ export default function App() {
 
         <div className="flex items-center gap-2 sm:gap-6">
           {syncStatus && (
-            <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-stone-500 bg-stone-100 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full">
-              <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-blue-500 animate-pulse"></span>
+            <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-stone-700 font-bold bg-stone-100 border border-stone-200 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full shadow-xs">
+              <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
               <span className="hidden xs:inline">{syncStatus}</span>
             </div>
           )}
           <div className="text-right hidden md:block">
-            <p className="text-sm font-semibold">Legiy System</p>
-            <p className="text-[10px] text-stone-400 uppercase font-black tracking-widest">
+            <p className="text-sm font-black text-stone-900">Legiy System</p>
+            <p className="text-[10px] text-stone-500 uppercase font-black tracking-wider">
               {viewMode === "POS" ? "POS Module" : "Admin Module"}
             </p>
           </div>
@@ -1978,21 +1990,21 @@ export default function App() {
       {viewMode === "POS" ? (
         <main className="flex-1 flex overflow-hidden p-4 gap-4 max-w-7xl mx-auto w-full">
           {/* Category Navigation (Left) */}
-          <nav className="w-24 flex flex-col gap-3 overflow-y-auto shrink-0 print:hidden hidden sm:flex pb-4 custom-scrollbar">
+          <nav className="w-24 flex flex-col gap-2.5 overflow-y-auto shrink-0 print:hidden hidden sm:flex pb-4 custom-scrollbar">
             {(
               ["Semua", ...categories]
             ).map((cat) => (
               <button
                 key={cat}
                 onClick={() => setActiveCategory(cat)}
-                className={`flex flex-col items-center justify-center p-3 h-16 rounded-2xl transition-all duration-200
+                className={`flex flex-col items-center justify-center p-2.5 h-16 rounded-2xl transition-all duration-200 font-black
                 ${
                   activeCategory === cat
-                    ? "bg-[#D81B60] text-white shadow-lg border-2 border-transparent"
-                    : "bg-white text-stone-500 shadow-sm border border-stone-100 hover:bg-stone-50 hover:border-stone-200"
+                    ? "bg-[#D81B60] text-white shadow-md border-2 border-[#D81B60]"
+                    : "bg-white text-stone-800 shadow-xs border-2 border-stone-200 hover:bg-pink-50/50 hover:border-pink-300 hover:text-[#D81B60]"
                 }`}
               >
-                <span className="text-[10px] font-bold leading-tight text-center">
+                <span className="text-xs font-black leading-tight text-center">
                   {cat.replace("Signature Dessert", "Dessert")}
                 </span>
               </button>
@@ -2006,18 +2018,18 @@ export default function App() {
               <div className="relative">
                 <input
                   type="text"
-                  placeholder="Cari menu di sini..."
+                  placeholder="Cari nama menu atau kategori..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-white text-stone-800 text-sm font-bold pl-11 pr-10 py-3.5 rounded-2xl shadow-sm border border-stone-200 outline-none focus:border-[#D81B60] focus:ring-2 focus:ring-[#D81B60]/10 transition-all placeholder-stone-400"
+                  className="w-full bg-white text-stone-900 text-sm font-bold pl-11 pr-10 py-3.5 rounded-2xl shadow-xs border-2 border-stone-200 outline-none focus:border-[#D81B60] focus:ring-2 focus:ring-[#D81B60]/20 transition-all placeholder-stone-400"
                 />
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400">
-                  <Search size={16} />
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-500">
+                  <Search size={18} strokeWidth={2.5} />
                 </span>
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery("")}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-xs text-stone-400 hover:text-stone-600 px-1 py-1 rounded bg-stone-100 transition-colors"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 font-black text-xs text-stone-600 hover:text-stone-900 px-2 py-1 rounded-md bg-stone-100 hover:bg-stone-200 transition-colors"
                   >
                     Clear
                   </button>
@@ -2034,11 +2046,11 @@ export default function App() {
                   <button
                     key={cat}
                     onClick={() => setActiveCategory(cat)}
-                    className={`px-4 py-2 rounded-xl whitespace-nowrap text-sm font-bold transition-all duration-200
+                    className={`px-4 py-2 rounded-xl whitespace-nowrap text-sm font-black transition-all duration-200
                       ${
                         activeCategory === cat
-                          ? "bg-[#D81B60] text-white shadow-md"
-                          : "bg-white text-stone-500 border border-stone-100"
+                          ? "bg-[#D81B60] text-white shadow-md border-2 border-[#D81B60]"
+                          : "bg-white text-stone-800 border-2 border-stone-200 hover:border-pink-200"
                       }`}
                   >
                     {cat}
@@ -2049,35 +2061,40 @@ export default function App() {
 
             {filteredProducts.length === 0 ? (
               <div className="col-span-full py-16 flex flex-col items-center justify-center text-center">
-                <Search size={40} className="text-stone-300 mb-3" />
-                <p className="text-sm font-bold text-stone-500">Menu tidak ditemukan</p>
-                <p className="text-xs text-stone-400 mt-1">Coba cari dengan nama menu atau kategori lain.</p>
+                <Search size={44} className="text-stone-400 mb-3" />
+                <p className="text-base font-black text-stone-700">Menu tidak ditemukan</p>
+                <p className="text-xs text-stone-500 font-semibold mt-1">Coba cari dengan kata kunci lain atau pilih kategori Semua.</p>
               </div>
             ) : (
               filteredProducts.map((product, idx) => (
                 <div
                   key={`${product.id}-${idx}`}
                   onClick={() => addToCart(product)}
-                  className={`bg-white rounded-2xl p-4 shadow-sm border flex flex-col cursor-pointer transition-all active:scale-95 group select-none hover:shadow-md h-full min-h-[120px]
-                  ${cart.find((c) => c.id === product.id) ? "border-[#D81B60] ring-2 ring-[#D81B60] ring-offset-2" : "border-stone-100 hover:border-[#D81B60]"}`}
+                  className={`bg-white rounded-2xl p-4 shadow-xs border-2 flex flex-col cursor-pointer transition-all active:scale-[0.98] group select-none hover:shadow-md h-full min-h-[128px]
+                  ${cart.find((c) => c.id === product.id) ? "border-[#D81B60] ring-2 ring-[#D81B60] ring-offset-2" : "border-stone-200 hover:border-[#D81B60]"}`}
                 >
-                  <h3 className="text-sm font-bold text-stone-700 leading-tight line-clamp-2 min-h-[2.5rem] mb-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-stone-400 group-hover:text-pink-600 transition-colors">
+                      {product.category}
+                    </span>
+                  </div>
+                  <h3 className="text-[15px] font-black text-stone-900 leading-snug line-clamp-2 min-h-[2.6rem] mb-3">
                     {product.name}
                   </h3>
-                  <div className="mt-auto flex justify-between items-center">
-                    <span className="text-sm font-bold text-[#D81B60]">
+                  <div className="mt-auto flex justify-between items-center pt-2 border-t border-stone-100">
+                    <span className="text-base font-black text-[#D81B60] tracking-tight">
                       {formatRupiah(product.price)}
                     </span>
 
                     {cart.find((c) => c.id === product.id) ? (
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-white bg-[#D81B60]">
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center font-black text-white bg-[#D81B60] shadow-sm">
                         <span className="text-xs">
                           {cart.find((c) => c.id === product.id)?.quantity}x
                         </span>
                       </div>
                     ) : (
-                      <button className="w-8 h-8 bg-stone-100 group-hover:bg-[#D81B60] group-hover:text-white transition-colors rounded-lg flex items-center justify-center font-bold text-stone-600">
-                        <Plus size={16} />
+                      <button className="w-8 h-8 bg-stone-100 group-hover:bg-[#D81B60] group-hover:text-white transition-colors rounded-lg flex items-center justify-center font-black text-stone-800 border border-stone-200">
+                        <Plus size={16} strokeWidth={3} />
                       </button>
                     )}
                   </div>
@@ -2089,38 +2106,39 @@ export default function App() {
           {/* Right Panel: Cart & Payment */}
           <aside className="w-80 flex flex-col gap-4 overflow-hidden shrink-0 print:hidden hidden md:flex">
             {/* Order Summary Card */}
-            <div className="flex-1 bg-white rounded-3xl shadow-md border border-stone-100 flex flex-col overflow-hidden">
-              <div className="p-5 border-b border-stone-50">
+            <div className="flex-1 bg-white rounded-3xl shadow-sm border-2 border-stone-200 flex flex-col overflow-hidden">
+              <div className="p-5 border-b border-stone-100">
                 <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-lg font-bold">Current Order</h2>
+                  <h2 className="text-lg font-black text-stone-900">Current Order</h2>
                   {cart.length > 0 && (
                     <button
                       onClick={clearCart}
-                      className="text-stone-400 hover:text-[#D81B60] transition-colors p-1 bg-stone-50 rounded-md"
+                      className="text-stone-500 hover:text-[#D81B60] transition-colors p-1.5 bg-stone-100 hover:bg-pink-50 rounded-lg"
+                      title="Kosongkan keranjang"
                     >
-                      <Trash2 size={14} />
+                      <Trash2 size={15} strokeWidth={2.5} />
                     </button>
                   )}
                 </div>
-                <div className="flex items-center bg-stone-50 rounded-xl px-3 outline outline-1 outline-stone-200 focus-within:outline-[#D81B60] transition-all mb-4">
-                  <User size={14} className="text-stone-400" />
+                <div className="flex items-center bg-stone-50 rounded-xl px-3 border-2 border-stone-200 focus-within:border-[#D81B60] transition-all mb-3">
+                  <User size={16} className="text-stone-500" strokeWidth={2.5} />
                   <input
                     type="text"
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
                     placeholder="Nama Pelanggan / Meja"
-                    className="w-full bg-transparent px-3 py-2 text-sm font-bold text-stone-700 placeholder-stone-400 outline-none"
+                    className="w-full bg-transparent px-2.5 py-2.5 text-sm font-extrabold text-stone-900 placeholder-stone-400 outline-none"
                   />
                 </div>
-                <div className="flex gap-2 p-1 bg-stone-50 rounded-xl">
+                <div className="flex gap-2 p-1 bg-stone-100 rounded-xl border border-stone-200">
                   {(["Dine-in", "Takeaway"] as OrderType[]).map((type) => (
                     <button
                       key={type}
                       onClick={() => setOrderType(type)}
-                      className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all ${
                         orderType === type
-                          ? "bg-white shadow-sm text-[#D81B60]"
-                          : "text-stone-400 hover:text-stone-600"
+                          ? "bg-[#D81B60] text-white shadow-sm"
+                          : "text-stone-700 hover:text-stone-900"
                       }`}
                     >
                       {type}
@@ -2132,9 +2150,9 @@ export default function App() {
               {/* Order Items Scroll Area */}
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 custom-scrollbar">
                 {cart.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-stone-300 space-y-3 pb-8">
-                    <ShoppingBag size={42} className="opacity-30" />
-                    <p className="text-xs font-bold text-stone-400">
+                  <div className="h-full flex flex-col items-center justify-center text-stone-400 space-y-3 pb-8">
+                    <ShoppingBag size={44} className="opacity-40" strokeWidth={2} />
+                    <p className="text-sm font-black text-stone-500">
                       Keranjang Kosong
                     </p>
                   </div>
@@ -2143,25 +2161,25 @@ export default function App() {
                     <div key={item.id} className="flex gap-3 group items-center">
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between gap-2">
-                          <h4 className="text-xs font-bold text-stone-800 line-clamp-1">
+                          <h4 className="text-[13px] font-black text-stone-900 line-clamp-1 leading-snug">
                             {item.name}
                           </h4>
-                          <span className="text-xs font-bold text-[#D81B60] whitespace-nowrap">
+                          <span className="text-[13px] font-black text-[#D81B60] whitespace-nowrap">
                             {formatRupiah(item.price)}
                           </span>
                         </div>
-                        <p className="text-[10px] text-stone-400 italic mb-1.5">
+                        <p className="text-[10px] text-stone-500 font-bold mb-1.5">
                           {item.category}
                         </p>
                         <div className="flex items-center justify-between mt-1">
-                          <div className="flex items-center gap-3 bg-stone-100 rounded-lg p-0.5">
+                          <div className="flex items-center gap-2.5 bg-stone-100 rounded-lg p-0.5 border border-stone-200">
                             <button
                               onClick={() => updateQuantity(item.id, -1)}
-                              className="w-6 h-6 flex items-center justify-center rounded text-stone-500 hover:bg-stone-200 hover:text-stone-800 transition-colors"
+                              className="w-6 h-6 flex items-center justify-center rounded text-stone-700 hover:bg-stone-200 hover:text-stone-900 transition-colors"
                             >
                               <Minus size={12} strokeWidth={3} />
                             </button>
-                            <span className="text-[10px] font-bold w-2 text-center text-stone-700">
+                            <span className="text-xs font-black w-3 text-center text-stone-900">
                               {item.quantity}
                             </span>
                             <button
@@ -2175,7 +2193,7 @@ export default function App() {
                             onClick={() => removeFromCart(item.id)}
                             className="opacity-0 group-hover:opacity-100 text-stone-400 hover:text-[#D81B60] transition-opacity p-1"
                           >
-                            <Trash2 size={14} />
+                            <Trash2 size={14} strokeWidth={2.5} />
                           </button>
                         </div>
                       </div>
@@ -2185,39 +2203,39 @@ export default function App() {
               </div>
 
               {/* Calculation */}
-              <div className="p-5 bg-stone-50 border-t border-stone-100 space-y-2 mt-auto">
+              <div className="p-5 bg-stone-50 border-t-2 border-stone-200 space-y-2 mt-auto">
                 <div className="flex justify-between text-sm">
-                  <span className="text-stone-500 font-medium">Subtotal</span>
-                  <span className="font-bold text-stone-700">
+                  <span className="text-stone-600 font-bold">Subtotal</span>
+                  <span className="font-black text-stone-900">
                     {formatRupiah(subtotal)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
-                  <span className="text-stone-500 font-medium">Diskon</span>
+                  <span className="text-stone-600 font-bold">Diskon</span>
                   <div className="relative w-24">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-stone-400 text-[10px]">Rp</span>
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-stone-500 text-[10px] font-bold">Rp</span>
                     <input 
                       type="number" 
                       value={discount || ""}
                       onChange={(e) => setDiscount(Math.max(0, parseInt(e.target.value) || 0))}
-                      className="w-full pl-6 pr-2 py-1 text-right bg-white border border-stone-200 rounded text-xs text-stone-700 font-bold focus:outline-none focus:border-[#D81B60] transition-colors hide-arrows"
+                      className="w-full pl-6 pr-2 py-1 text-right bg-white border border-stone-300 rounded text-xs text-stone-900 font-black focus:outline-none focus:border-[#D81B60] transition-colors hide-arrows"
                       placeholder="0"
                     />
                   </div>
                 </div>
                 {TAX_RATE > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-stone-500 font-medium">
+                    <span className="text-stone-600 font-bold">
                       PB1 ({(TAX_RATE * 100).toFixed(0)}%)
                     </span>
-                    <span className="font-bold text-stone-700">
+                    <span className="font-black text-stone-900">
                       {formatRupiah(tax)}
                     </span>
                   </div>
                 )}
-                <div className="pt-3 border-t border-stone-200 flex justify-between items-center mt-3">
-                  <span className="font-bold text-stone-800">Total Amount</span>
-                  <span className="text-lg font-extrabold text-[#D81B60]">
+                <div className="pt-3 border-t-2 border-stone-200 flex justify-between items-center mt-3">
+                  <span className="font-black text-stone-900 text-base">Total Amount</span>
+                  <span className="text-xl font-black text-[#D81B60]">
                     {formatRupiah(total)}
                   </span>
                 </div>
@@ -2228,10 +2246,10 @@ export default function App() {
             <button
               onClick={() => setIsCheckoutModalOpen(true)}
               disabled={cart.length === 0}
-              className={`w-full py-4 rounded-2xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all shrink-0 ${
+              className={`w-full py-4 rounded-2xl font-black text-lg shadow-md flex items-center justify-center gap-2 transition-all shrink-0 ${
                 cart.length === 0
                   ? "bg-stone-200 text-stone-400 shadow-none cursor-not-allowed"
-                  : "bg-[#D81B60] text-white hover:brightness-110 active:scale-95"
+                  : "bg-[#D81B60] text-white hover:brightness-105 active:scale-95"
               }`}
             >
               Process Payment
@@ -2243,14 +2261,14 @@ export default function App() {
           <div className="max-w-6xl mx-auto w-full flex flex-col gap-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
               <div>
-                <h2 className="text-2xl font-black text-stone-800">
+                <h2 className="text-2xl sm:text-3xl font-black text-stone-900">
                   Management <span className="text-[#D81B60]">Dashboard</span>
                 </h2>
-                <p className="text-xs text-stone-500 font-medium tracking-wide mt-1 uppercase">
-                  Monitor business performance
+                <p className="text-xs text-stone-600 font-bold tracking-wider mt-1 uppercase">
+                  Monitor business performance & inventory
                 </p>
               </div>
-              <div className="flex bg-white rounded-2xl shadow-sm border border-stone-200 p-1 w-full sm:w-fit overflow-x-auto custom-scrollbar">
+              <div className="flex bg-white rounded-2xl shadow-xs border-2 border-stone-200 p-1 w-full sm:w-fit overflow-x-auto custom-scrollbar">
                 {(
                   [
                     "MENU",
@@ -2266,7 +2284,11 @@ export default function App() {
                   <button
                     key={tab}
                     onClick={() => setManagementTab(tab)}
-                    className={`flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${managementTab === tab ? "bg-stone-800 text-white shadow-md" : "text-stone-500 hover:bg-stone-50"}`}
+                    className={`flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap ${
+                      managementTab === tab 
+                        ? "bg-[#D81B60] text-white shadow-sm" 
+                        : "text-stone-700 hover:text-stone-900 hover:bg-stone-100"
+                    }`}
                   >
                     {tab.replace("_", " ")}
                   </button>
@@ -2274,7 +2296,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex-1 bg-white rounded-t-3xl shadow-sm border border-stone-200 overflow-hidden flex flex-col print:hidden">
+            <div className="flex-1 bg-white rounded-t-3xl shadow-sm border-2 border-b-0 border-stone-200 overflow-hidden flex flex-col print:hidden">
               {managementTab === "MENU" && (
                 <ManagementMenu
                   productList={productList}
@@ -2351,14 +2373,14 @@ export default function App() {
       {/* CHECKOUT MODAL */}
       {isCheckoutModalOpen && !lastOrderDetails && (
         <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col flex-1 max-h-[90vh] border border-stone-100">
-            <div className="p-6 border-b border-stone-100 bg-stone-50/50">
-              <h2 className="text-xl font-black text-stone-800">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col flex-1 max-h-[90vh] border-2 border-stone-200">
+            <div className="p-6 border-b border-stone-200 bg-stone-50">
+              <h2 className="text-xl font-black text-stone-900">
                 Payment Process
               </h2>
-              <p className="text-stone-500 text-sm mt-1">
+              <p className="text-stone-600 text-sm font-bold mt-1">
                 Total Amount:{" "}
-                <span className="font-bold text-[#D81B60] text-lg">
+                <span className="font-black text-[#D81B60] text-xl">
                   {formatRupiah(total)}
                 </span>
               </p>
@@ -2366,7 +2388,7 @@ export default function App() {
 
             <div className="p-6 overflow-y-auto space-y-6 custom-scrollbar">
               <div>
-                <label className="text-[10px] font-bold text-stone-400 tracking-widest uppercase mb-3 block">
+                <label className="text-[11px] font-black text-stone-700 tracking-wider uppercase mb-3 block">
                   Payment Method
                 </label>
                 <div className="grid grid-cols-2 gap-2 mb-4">
@@ -2401,11 +2423,11 @@ export default function App() {
                           else if (cat === "E-Wallet")
                             setPaymentMethod("Gopay");
                         }}
-                        className={`rounded-2xl flex items-center justify-start px-3 py-2 gap-3 transition-all outline-none
+                        className={`rounded-2xl flex items-center justify-start px-3 py-2.5 gap-3 transition-all outline-none border-2
                           ${
                             isActive
-                              ? "bg-stone-800 text-white shadow-lg ring-2 ring-[#D81B60] ring-offset-2"
-                              : "bg-white border text-stone-600 border-stone-200 hover:bg-stone-50 shadow-sm"
+                              ? "bg-stone-900 text-white border-stone-900 shadow-md ring-2 ring-[#D81B60] ring-offset-1"
+                              : "bg-white border-stone-200 text-stone-800 hover:bg-stone-50 hover:border-stone-300"
                           }
                         `}
                       >
@@ -2415,7 +2437,7 @@ export default function App() {
                           {icon}
                         </div>
                         <span
-                          className={`text-xs font-bold ${isActive ? "text-white" : "text-stone-700"}`}
+                          className={`text-xs font-black ${isActive ? "text-white" : "text-stone-900"}`}
                         >
                           {cat}
                         </span>
@@ -2425,8 +2447,8 @@ export default function App() {
                 </div>
 
                 {paymentMethod.includes("Transfer") && (
-                  <div className="animate-in fade-in slide-in-from-top-2 duration-300 mb-4 bg-stone-50 p-3 rounded-xl border border-stone-100">
-                    <label className="text-[10px] font-bold text-stone-500 tracking-widest uppercase mb-2 block">
+                  <div className="animate-in fade-in slide-in-from-top-2 duration-300 mb-4 bg-stone-50 p-3.5 rounded-2xl border-2 border-stone-200">
+                    <label className="text-[11px] font-black text-stone-700 tracking-wider uppercase mb-2 block">
                       Pilih Bank
                     </label>
                     <div className="flex gap-2">
@@ -2436,7 +2458,7 @@ export default function App() {
                           onClick={() =>
                             setPaymentMethod(bank as PaymentMethod)
                           }
-                          className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all outline-none ${paymentMethod === bank ? "bg-blue-600 text-white shadow-md" : "bg-white text-stone-600 border border-stone-200 shadow-sm hover:bg-stone-100"}`}
+                          className={`flex-1 py-2 rounded-xl text-xs font-black transition-all outline-none ${paymentMethod === bank ? "bg-blue-600 text-white shadow-md" : "bg-white text-stone-800 border-2 border-stone-200 hover:bg-stone-100"}`}
                         >
                           {bank.replace("Transfer ", "")}
                         </button>
@@ -2446,8 +2468,8 @@ export default function App() {
                 )}
 
                 {["Gopay", "Dana", "Shopeepay"].includes(paymentMethod) && (
-                  <div className="animate-in fade-in slide-in-from-top-2 duration-300 mb-4 bg-stone-50 p-3 rounded-xl border border-stone-100">
-                    <label className="text-[10px] font-bold text-stone-500 tracking-widest uppercase mb-2 block">
+                  <div className="animate-in fade-in slide-in-from-top-2 duration-300 mb-4 bg-stone-50 p-3.5 rounded-2xl border-2 border-stone-200">
+                    <label className="text-[11px] font-black text-stone-700 tracking-wider uppercase mb-2 block">
                       Pilih E-Wallet
                     </label>
                     <div className="flex gap-2">
@@ -2457,7 +2479,7 @@ export default function App() {
                           onClick={() =>
                             setPaymentMethod(ewallet as PaymentMethod)
                           }
-                          className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all outline-none ${paymentMethod === ewallet ? "bg-emerald-600 text-white shadow-md" : "bg-white text-stone-600 border border-stone-200 shadow-sm hover:bg-stone-100"}`}
+                          className={`flex-1 py-2 rounded-xl text-xs font-black transition-all outline-none ${paymentMethod === ewallet ? "bg-emerald-600 text-white shadow-md" : "bg-white text-stone-800 border-2 border-stone-200 hover:bg-stone-100"}`}
                         >
                           {ewallet}
                         </button>
@@ -2469,7 +2491,7 @@ export default function App() {
 
               {paymentMethod === "Cash" && (
                 <div className="animate-in fade-in slide-in-from-top-4 duration-300">
-                  <label className="text-[10px] font-bold text-stone-400 tracking-widest uppercase mb-3 block">
+                  <label className="text-[11px] font-black text-stone-700 tracking-wider uppercase mb-3 block">
                     Cash Received (Rp)
                   </label>
                   <input
@@ -2482,7 +2504,7 @@ export default function App() {
                       );
                     }}
                     placeholder="e.g. 100000"
-                    className="w-full text-2xl font-bold p-4 bg-stone-50 border-2 rounded-2xl border-stone-200 focus:border-[#D81B60] focus:bg-white focus:ring-4 focus:ring-[#D81B60]/10 outline-none transition-all text-stone-800 placeholder-stone-300"
+                    className="w-full text-2xl font-black p-4 bg-white border-2 rounded-2xl border-stone-300 focus:border-[#D81B60] focus:bg-white focus:ring-4 focus:ring-[#D81B60]/10 outline-none transition-all text-stone-900 placeholder-stone-400"
                     autoFocus
                   />
 
@@ -2494,21 +2516,21 @@ export default function App() {
                         onClick={() =>
                           setCashAmount(amount.toLocaleString("id-ID"))
                         }
-                        className="py-2.5 bg-white border border-stone-100 hover:bg-stone-50 rounded-xl text-xs font-bold text-stone-600 shadow-sm"
+                        className="py-2.5 bg-white border-2 border-stone-200 hover:border-stone-400 rounded-xl text-xs font-black text-stone-800 shadow-xs"
                       >
                         {amount === total
-                          ? "Exact Amount"
+                          ? "Pas (Exact)"
                           : amount / 1000 + "K"}
                       </button>
                     ))}
                   </div>
 
                   {cashGiven >= total && (
-                    <div className="mt-5 p-4 bg-emerald-50 rounded-2xl border border-emerald-100 text-center">
-                      <p className="text-xs font-bold text-emerald-800 uppercase tracking-widest mb-1">
-                        Change Return
+                    <div className="mt-5 p-4 bg-emerald-50 rounded-2xl border-2 border-emerald-200 text-center">
+                      <p className="text-xs font-black text-emerald-900 uppercase tracking-wider mb-1">
+                        Change Return (Kembalian)
                       </p>
-                      <p className="text-3xl font-black text-emerald-600">
+                      <p className="text-3xl font-black text-emerald-700">
                         {formatRupiah(change)}
                       </p>
                     </div>
@@ -2517,14 +2539,14 @@ export default function App() {
               )}
             </div>
 
-            <div className="p-6 border-t border-stone-100 bg-white flex gap-3">
+            <div className="p-6 border-t-2 border-stone-200 bg-white flex gap-3">
               <button
                 onClick={() => {
                   setIsCheckoutModalOpen(false);
                   setPaymentMethod("");
                   setCashAmount("");
                 }}
-                className="px-6 py-4 rounded-2xl font-bold text-stone-500 bg-stone-100 hover:bg-stone-200 transition-colors flex-none"
+                className="px-6 py-4 rounded-2xl font-black text-stone-700 bg-stone-100 hover:bg-stone-200 transition-colors flex-none"
                 disabled={isProcessing}
               >
                 Cancel
@@ -2536,13 +2558,13 @@ export default function App() {
                   (paymentMethod === "Cash" && cashGiven < total) ||
                   isProcessing
                 }
-                className={`flex-1 py-4 rounded-2xl font-bold flex items-center justify-center transition-all
+                className={`flex-1 py-4 rounded-2xl font-black flex items-center justify-center transition-all text-base
                   ${
                     !paymentMethod ||
                     (paymentMethod === "Cash" && cashGiven < total) ||
                     isProcessing
                       ? "bg-stone-200 text-stone-400 cursor-not-allowed shadow-none"
-                      : "bg-[#D81B60] hover:brightness-110 active:scale-95 text-white shadow-lg shadow-[#D81B60]/20"
+                      : "bg-[#D81B60] hover:brightness-105 active:scale-95 text-white shadow-md shadow-[#D81B60]/20"
                   }`}
               >
                 {isProcessing ? "Processing Sync..." : "Complete Transaction"}

@@ -91,6 +91,15 @@
         "footerText1": { "type": "string", "description": "Receipt primary footer message" },
         "footerText2": { "type": "string", "description": "Receipt secondary footer message" }
       }
+    },
+    "test": {
+      "title": "Test",
+      "description": "Heartbeat and connection ping test document",
+      "type": "object",
+      "properties": {
+        "ping": { "type": "boolean" },
+        "lastPingAt": { "type": "string" }
+      }
     }
   },
   "firestoreRules": "firestore.rules"

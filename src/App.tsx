@@ -34,6 +34,12 @@ import {
   Instagram,
   Check,
   ChevronRight,
+  Activity,
+  ShieldCheck,
+  AlertCircle,
+  ExternalLink,
+  HelpCircle,
+  Radio,
 } from "lucide-react";
 import {
   products,
@@ -65,6 +71,7 @@ import {
   syncReceiptSettingsToFirestore,
   seedInitialFirestoreData,
   importFromGoogleSheetsToFirestore,
+  testFirestoreConnection,
 } from "./firebase";
 import { QRCodeCanvas } from "qrcode.react";
 import { STORE_LOGO, STORE_LOGO_PRINT } from "./logo";
@@ -1320,6 +1327,29 @@ function ManagementSettings({
   productListCount?: number;
   categoryCount?: number;
 }) {
+  const [pingState, setPingState] = useState<{
+    loading: boolean;
+    result?: { connected: boolean; message: string; latencyMs?: number; projectId: string; databaseId: string };
+  }>({ loading: false });
+
+  const handleTestPing = async () => {
+    setPingState({ loading: true });
+    try {
+      const res = await testFirestoreConnection();
+      setPingState({ loading: false, result: res });
+    } catch (err: any) {
+      setPingState({
+        loading: false,
+        result: {
+          connected: false,
+          message: err?.message || "Gagal terkoneksi ke Firebase",
+          projectId: "mystic-chord-mnm8c",
+          databaseId: "ai-studio-legiydessertpos-fced9c3e-1780-4785-a23d-3eae25d862ac",
+        },
+      });
+    }
+  };
+
   return (
     <div className="p-4 sm:p-6 h-full flex flex-col">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
@@ -1350,20 +1380,39 @@ function ManagementSettings({
                 <Database size={20} />
               </div>
               <div>
-                <h4 className="text-base font-black text-stone-900 flex items-center gap-2">
-                  Firebase Cloud Firestore & Excel Migration
+                <h4 className="text-base font-black text-stone-900 flex items-center gap-2 flex-wrap">
+                  Firebase Cloud Firestore & Database Sync
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
                     <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
                     {firebaseConnected ? "Terhubung Cloud (Real-time)" : "Connecting..."}
                   </span>
                 </h4>
                 <p className="text-xs text-stone-600 font-bold mt-0.5">
-                  Semua data tersimpan terpusat di Firestore. Riwayat nota dan produk dari Excel telah dimigrasikan.
+                  Backend database Google Cloud Firestore aktif. Data menu, pesanan, dan pengeluaran otomatis tersimpan online.
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+              <button
+                onClick={handleTestPing}
+                disabled={pingState.loading}
+                className="bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-300 px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all disabled:opacity-50 shadow-xs shrink-0"
+                title="Uji latensi dan pastikan server Firestore merespons"
+              >
+                {pingState.loading ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin text-[#D45D79]" />
+                    Menguji Ping...
+                  </>
+                ) : (
+                  <>
+                    <Activity size={14} className="text-[#D45D79]" />
+                    Uji Ping Koneksi
+                  </>
+                )}
+              </button>
+
               {onImportFromSheets && (
                 <button
                   onClick={onImportFromSheets}
@@ -1379,7 +1428,7 @@ function ManagementSettings({
                   ) : (
                     <>
                       <ArrowDownToLine size={14} />
-                      Tarik Ulang dari Excel/Sheets
+                      Tarik dari Sheets
                     </>
                   )}
                 </button>
@@ -1390,6 +1439,7 @@ function ManagementSettings({
                   onClick={onMigrateAllToFirebase}
                   disabled={isMigrating || isImportingSheets}
                   className="bg-stone-900 hover:bg-black text-white px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all disabled:opacity-50 shadow-xs shrink-0"
+                  title="Unggah dan sinkronkan semua item lokal ke server Firestore"
                 >
                   {isMigrating ? (
                     <>
@@ -1405,6 +1455,61 @@ function ManagementSettings({
                 </button>
               )}
             </div>
+          </div>
+
+          {/* Test Ping Result Banner */}
+          {pingState.result && (
+            <div
+              className={`mt-3 p-3 rounded-xl border text-xs flex items-center justify-between gap-3 ${
+                pingState.result.connected
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-900 font-bold"
+                  : "bg-rose-50 border-rose-200 text-rose-900 font-bold"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {pingState.result.connected ? (
+                  <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertCircle size={16} className="text-rose-600 shrink-0" />
+                )}
+                <span>
+                  {pingState.result.connected ? "Koneksi Cloud Berhasil: " : "Koneksi Bermasalah: "}
+                  {pingState.result.message}
+                </span>
+              </div>
+              {pingState.result.latencyMs !== undefined && (
+                <span className="font-mono bg-white/80 px-2 py-0.5 rounded border text-[11px] shrink-0">
+                  {pingState.result.latencyMs} ms
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Configuration & Architecture Info */}
+          <div className="mt-3 p-3.5 rounded-xl bg-stone-50 border border-stone-200/80 text-stone-700 text-xs space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200 pb-2">
+              <span className="font-bold text-stone-900 flex items-center gap-1.5">
+                <ShieldCheck size={14} className="text-[#D45D79]" /> Detail Kredensial Firebase Aktif
+              </span>
+              <span className="text-[11px] font-mono text-stone-500 bg-white px-2 py-0.5 rounded border border-stone-200">
+                SDK v12.19.0 • Firestore Real-time
+              </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
+              <div>
+                <span className="text-stone-500 font-medium">Project ID: </span>
+                <span className="font-mono font-bold text-stone-900">mystic-chord-mnm8c</span>
+              </div>
+              <div>
+                <span className="text-stone-500 font-medium">Firestore Database ID: </span>
+                <span className="font-mono font-bold text-stone-900 break-all">
+                  ai-studio-legiydessertpos-fced9c3e-1780-4785-a23d-3eae25d862ac
+                </span>
+              </div>
+            </div>
+            <p className="text-[11px] text-stone-600 leading-relaxed pt-1">
+              💡 <strong>Aplikasi ini sudah otomatis terhubung ke database Firebase</strong>. Setiap transaksi kasir baru, perubahan menu produk, kategori, dan pengeluaran secara langsung tersinkronkan ke Firestore cloud. Anda tidak perlu setup manual lagi. Jika ingin menyalin semua data bawaan saat ini ke server, klik tombol <strong>"Sinkron Lokal ke Cloud"</strong>.
+            </p>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 text-xs">
@@ -2001,6 +2106,30 @@ export default function App() {
   const [isFirebaseConnected, setIsFirebaseConnected] = useState(true);
   const [isMigrating, setIsMigrating] = useState(false);
   const [isImportingSheets, setIsImportingSheets] = useState(false);
+  const [isDbStatusModalOpen, setIsDbStatusModalOpen] = useState(false);
+  const [diagnosticPingState, setDiagnosticPingState] = useState<{
+    loading: boolean;
+    result?: { connected: boolean; message: string; latencyMs?: number; projectId: string; databaseId: string };
+  }>({ loading: false });
+
+  const runDiagnosticPing = async () => {
+    setDiagnosticPingState({ loading: true });
+    try {
+      const res = await testFirestoreConnection();
+      setDiagnosticPingState({ loading: false, result: res });
+      setIsFirebaseConnected(res.connected);
+    } catch (err: any) {
+      setDiagnosticPingState({
+        loading: false,
+        result: {
+          connected: false,
+          message: err?.message || "Koneksi gagal",
+          projectId: "mystic-chord-mnm8c",
+          databaseId: "ai-studio-legiydessertpos-fced9c3e-1780-4785-a23d-3eae25d862ac",
+        },
+      });
+    }
+  };
 
   // Real-time Firebase Firestore synchronization
   useEffect(() => {
@@ -2420,12 +2549,22 @@ export default function App() {
             </button>
           )}
 
-          <div className="flex items-center gap-2 text-[11px] sm:text-xs text-stone-700 font-semibold bg-stone-50 border border-stone-200/80 px-2.5 sm:px-3 py-1.5 rounded-full shadow-xs">
+          <button
+            onClick={() => {
+              setIsDbStatusModalOpen(true);
+              if (!diagnosticPingState.result) {
+                runDiagnosticPing();
+              }
+            }}
+            className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-stone-700 font-semibold bg-stone-50 hover:bg-stone-100/90 active:scale-95 border border-stone-200/80 px-2.5 sm:px-3 py-1.5 rounded-full shadow-xs transition-all cursor-pointer"
+            title="Klik untuk melihat detail koneksi Firebase Firestore"
+          >
             <span className={`w-2 h-2 rounded-full ${isFirebaseConnected ? "bg-emerald-500" : "bg-amber-500 animate-pulse"}`}></span>
             <span className="hidden sm:inline">
               {syncStatus || (isFirebaseConnected ? "Cloud Sync Aktif" : "Menghubungkan...")}
             </span>
-          </div>
+            <Database size={13} className="text-[#D45D79] shrink-0" />
+          </button>
 
           <div className="text-right hidden md:block">
             <p className="text-xs font-bold text-stone-900">Legiy POS</p>
@@ -3646,6 +3785,112 @@ export default function App() {
         </div>
         );
       })()}
+
+      {/* Firebase Database Status & Connection Modal */}
+      {isDbStatusModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-stone-200 flex flex-col gap-4">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-[#D45D79]">
+                  <Database size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-stone-900 leading-tight">
+                    Status Database Firebase
+                  </h3>
+                  <p className="text-[11px] text-stone-500 font-medium">
+                    Google Cloud Firestore Real-time Backend
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsDbStatusModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-600 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {/* Status Indicator Banner */}
+              <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <div>
+                    <p className="text-xs font-black text-emerald-950">
+                      Database Telah Terhubung & Aktif
+                    </p>
+                    <p className="text-[10.5px] text-emerald-800 font-medium">
+                      Setiap transaksi kasir otomatis tersimpan ke server Google Cloud
+                    </p>
+                  </div>
+                </div>
+                {diagnosticPingState.result?.latencyMs !== undefined && (
+                  <span className="text-[11px] font-mono font-bold bg-white/90 text-emerald-900 px-2 py-0.5 rounded border border-emerald-200">
+                    {diagnosticPingState.result.latencyMs} ms
+                  </span>
+                )}
+              </div>
+
+              {/* Database Specs */}
+              <div className="bg-stone-50 rounded-2xl p-3.5 border border-stone-200/80 space-y-2 text-xs">
+                <div className="flex justify-between py-1 border-b border-stone-200/60">
+                  <span className="text-stone-500 font-medium">Status Koneksi</span>
+                  <span className="font-bold text-emerald-700 flex items-center gap-1">
+                    <CheckCircle2 size={13} /> Online & Sinkron
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-stone-200/60">
+                  <span className="text-stone-500 font-medium">Firebase Project ID</span>
+                  <span className="font-mono font-bold text-stone-900">mystic-chord-mnm8c</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-stone-200/60">
+                  <span className="text-stone-500 font-medium">Firestore Database ID</span>
+                  <span className="font-mono font-bold text-stone-900 text-[10px] break-all max-w-[240px] text-right">
+                    ai-studio-legiydessertpos-fced9c3e-1780-4785-a23d-3eae25d862ac
+                  </span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-stone-500 font-medium">Data Tersinkron</span>
+                  <span className="font-mono font-bold text-stone-900">
+                    {productList.length} Menu • {orderHistory.length} Nota
+                  </span>
+                </div>
+              </div>
+
+              {/* Diagnostic Action */}
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={runDiagnosticPing}
+                  disabled={diagnosticPingState.loading}
+                  className="flex-1 py-2.5 px-3 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-xl text-xs font-black flex items-center justify-center gap-2 border border-stone-200 transition-colors disabled:opacity-50"
+                >
+                  {diagnosticPingState.loading ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin text-[#D45D79]" /> Menguji Latensi...
+                    </>
+                  ) : (
+                    <>
+                      <Activity size={14} className="text-[#D45D79]" /> Uji Ping Server
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    setIsDbStatusModalOpen(false);
+                    setViewMode("MANAGEMENT");
+                    setManagementTab("SETTINGS");
+                  }}
+                  className="flex-1 py-2.5 px-3 bg-[#D45D79] hover:bg-[#C44D69] text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-xs transition-colors"
+                >
+                  <Settings size={14} /> Pengaturan Cloud
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       </div>
 

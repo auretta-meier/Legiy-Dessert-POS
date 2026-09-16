@@ -7,6 +7,7 @@ import {
   deleteDoc,
   onSnapshot,
   getDocs,
+  getDocFromServer,
   query,
   orderBy,
   limit,
@@ -27,6 +28,52 @@ export const db = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestore
 
 // Initialize Firebase Auth
 export const auth = getAuth(app);
+
+// Test connection on boot as mandated by skill
+async function testConnection() {
+  try {
+    await getDocFromServer(doc(db, "test", "connection"));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("the client is offline")) {
+      console.warn("Please check your Firebase configuration or network connection.");
+    }
+  }
+}
+testConnection();
+
+// Active connection test for diagnostic and UI feedback
+export async function testFirestoreConnection(): Promise<{
+  connected: boolean;
+  message: string;
+  projectId: string;
+  databaseId: string;
+  latencyMs?: number;
+}> {
+  const start = performance.now();
+  try {
+    const testDocRef = doc(db, "test", "connection");
+    await setDoc(testDocRef, { ping: true, lastPingAt: new Date().toISOString() }, { merge: true });
+    await getDocFromServer(testDocRef);
+    const latency = Math.round(performance.now() - start);
+    return {
+      connected: true,
+      message: `Terhubung langsung ke Cloud Firestore (${latency} ms)`,
+      projectId: firebaseConfig.projectId,
+      databaseId: firebaseConfig.firestoreDatabaseId || "(default)",
+      latencyMs: latency,
+    };
+  } catch (error: any) {
+    const latency = Math.round(performance.now() - start);
+    console.error("Test Firestore connection error:", error);
+    return {
+      connected: false,
+      message: error?.message || "Gagal menghubungi server Firestore",
+      projectId: firebaseConfig.projectId,
+      databaseId: firebaseConfig.firestoreDatabaseId || "(default)",
+      latencyMs: latency,
+    };
+  }
+}
 
 // Ensure anonymous sign-in for cashier terminal sessions
 let currentUser: User | null = null;

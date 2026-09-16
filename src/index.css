@@ -36,3 +36,11 @@ body {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: #d1d5db;
 }
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

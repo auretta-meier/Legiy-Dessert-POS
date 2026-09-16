@@ -6,6 +6,7 @@ import {
   Trash2,
   Printer,
   CheckCircle,
+  CheckCircle2,
   Save,
   Coffee,
   Cookie,
@@ -19,11 +20,86 @@ import {
   History,
   User,
   Search,
+  Database,
+  Cloud,
+  RefreshCw,
+  Heart,
+  Sparkles,
+  SlidersHorizontal,
+  Tag,
+  Receipt,
+  X,
+  Wifi,
+  Quote,
+  Instagram,
+  Check,
+  ChevronRight,
 } from "lucide-react";
-import { products, formatRupiah, Category, Product, initialCategories } from "./data";
-import { syncToGoogleSheets, fetchFromGoogleSheets } from "./googleSheetsService";
+import {
+  products,
+  formatRupiah,
+  Category,
+  Product,
+  initialCategories,
+  ProductAddonGroup,
+  ProductAddonOption,
+  SelectedAddon,
+  DEFAULT_BEVERAGE_ADDONS,
+  DEFAULT_DESSERT_ADDONS,
+} from "./data";
+import ManagementFinance from "./components/ManagementFinance";
+import ManagementPerformance from "./components/ManagementPerformance";
+import AddonSelectionModal from "./components/AddonSelectionModal";
+import {
+  subscribeToProducts,
+  subscribeToCategories,
+  subscribeToOrders,
+  subscribeToExpenses,
+  subscribeToPreOrders,
+  subscribeToReceiptSettings,
+  syncProductToFirestore,
+  syncCategoryToFirestore,
+  syncOrderToFirestore,
+  syncExpenseToFirestore,
+  syncPreOrderToFirestore,
+  syncReceiptSettingsToFirestore,
+  seedInitialFirestoreData,
+  importFromGoogleSheetsToFirestore,
+} from "./firebase";
 import { QRCodeCanvas } from "qrcode.react";
 import { STORE_LOGO, STORE_LOGO_PRINT } from "./logo";
+
+export const DESSERT_QUOTES_PRESETS = [
+  "Manisnya pas, bikin harimu lebih ceria ✨",
+  "Life is short, eat dessert first! 🍰",
+  "Setiap gigitan adalah kebahagiaan 💖",
+  "Terima kasih telah menjadi bagian cerita manis kami 🥰",
+  "Dibuat dengan cinta, dinikmati dengan senyuman 😊",
+  "Dessert lezat untuk momen berharga Anda 🌸",
+  "Makan dessert dulu, bahagia kemudian 🧁",
+  "Terima kasih sudah mendukung UMKM kuliner lokal 🙏",
+];
+
+export const DEFAULT_RECEIPT_SETTINGS = {
+  storeName: "Legiy's Dessert",
+  storeTagline: "Sweet Delights & Artisanal Desserts",
+  storeAddress: "Perumahan TSI, Blok O.14, Cirebon",
+  storePhone: "0812-1252-7520",
+  instagram: "@legiy_dessert",
+  wifiSsid: "Legiy_Free_WiFi",
+  wifiPass: "manislegiy",
+  quotesBelow: "Manisnya pas, bikin harimu lebih ceria ✨",
+  footerText1: "Terima kasih atas kunjungannya!",
+  footerText2: "Barang yang sudah dibeli tidak dapat ditukar",
+  qrCodeUrl: "https://linktr.ee/legiy_dessert",
+  showLogo: true,
+  showAddress: true,
+  showPhone: true,
+  showInstagram: true,
+  showWifi: true,
+  showQuotes: true,
+  showQrCode: true,
+};
 
 function useLocalStorage<T>(key: string, initialValue: T) {
   const [storedValue, setStoredValue] = useState<T>(() => {
@@ -163,17 +239,33 @@ function ManagementMenu({
     category: categories[0] || "",
     price: 0,
     cogs: 0,
+    addons: [],
   });
 
   const openAdd = () => {
     setEditingProduct(null);
-    setForm({ name: "", category: categories[0] || "", price: 0, cogs: 0 });
+    const cat = categories[0] || "";
+    const isDrink = cat.toLowerCase().includes("minuman") || cat.toLowerCase().includes("drink") || cat.toLowerCase().includes("kopi");
+    setForm({
+      name: "",
+      category: cat,
+      price: 0,
+      cogs: 0,
+      addons: isDrink ? JSON.parse(JSON.stringify(DEFAULT_BEVERAGE_ADDONS)) : JSON.parse(JSON.stringify(DEFAULT_DESSERT_ADDONS)),
+    });
     setIsModalOpen(true);
   };
 
   const openEdit = (p: Product) => {
     setEditingProduct(p);
-    setForm({ ...p });
+    setForm({
+      ...p,
+      addons: p.addons && p.addons.length > 0 
+        ? JSON.parse(JSON.stringify(p.addons))
+        : (p.category.toLowerCase().includes("minuman") || p.category.toLowerCase().includes("drink") || p.category.toLowerCase().includes("kopi"))
+          ? JSON.parse(JSON.stringify(DEFAULT_BEVERAGE_ADDONS))
+          : JSON.parse(JSON.stringify(DEFAULT_DESSERT_ADDONS)),
+    });
     setIsModalOpen(true);
   };
 
@@ -186,7 +278,7 @@ function ManagementMenu({
     )
       return;
     if (editingProduct) {
-      const updatedProduct = { ...editingProduct, ...form };
+      const updatedProduct = { ...editingProduct, ...form } as Product;
       setProductList((prev: Product[]) =>
         prev.map((p) => (p.id === editingProduct.id ? updatedProduct : p)),
       );
@@ -207,10 +299,54 @@ function ManagementMenu({
     queueSync("PRODUCT", "DELETE", { id });
   };
 
+  // Helper functions for modifying addons in form
+  const addAddonGroup = () => {
+    const newGroup: ProductAddonGroup = {
+      id: `group-${Date.now()}`,
+      name: "Opsi Tambahan",
+      type: "single",
+      required: false,
+      options: [
+        { id: `opt-${Date.now()}-1`, name: "Standar", price: 0 },
+        { id: `opt-${Date.now()}-2`, name: "Extra", price: 5000 },
+      ],
+    };
+    setForm((prev) => ({
+      ...prev,
+      addons: [...(prev.addons || []), newGroup],
+    }));
+  };
+
+  const applyBeveragePreset = () => {
+    setForm((prev) => ({
+      ...prev,
+      addons: JSON.parse(JSON.stringify(DEFAULT_BEVERAGE_ADDONS)),
+    }));
+  };
+
+  const applyDessertPreset = () => {
+    setForm((prev) => ({
+      ...prev,
+      addons: JSON.parse(JSON.stringify(DEFAULT_DESSERT_ADDONS)),
+    }));
+  };
+
+  const clearAddons = () => {
+    setForm((prev) => ({
+      ...prev,
+      addons: [],
+    }));
+  };
+
   return (
     <div className="p-6 h-full flex flex-col relative">
       <div className="flex justify-between items-center mb-6">
-        <h3 className="text-xl font-black text-stone-900">Product Menu</h3>
+        <div>
+          <h3 className="text-xl font-black text-stone-900">Product Menu</h3>
+          <p className="text-xs text-stone-500 font-bold mt-0.5">
+            Kelola daftar menu, harga, modal (COGS), dan kustomisasi addons (sugar, ice, topping)
+          </p>
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={openAdd}
@@ -228,13 +364,14 @@ function ManagementMenu({
       </div>
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[550px]">
+          <table className="w-full text-left border-collapse min-w-[650px]">
             <thead>
               <tr className="border-b-2 border-stone-200 text-stone-700 text-xs uppercase tracking-wider">
                 <th className="pb-3 font-black">Product Name</th>
                 <th className="pb-3 font-black">Category</th>
                 <th className="pb-3 font-black">Price</th>
                 <th className="pb-3 font-black">COGS</th>
+                <th className="pb-3 font-black">Add-ons (Kustomisasi)</th>
                 <th className="pb-3 font-black text-right">Actions</th>
               </tr>
             </thead>
@@ -258,6 +395,24 @@ function ManagementMenu({
                   <td className="py-4 text-sm font-mono font-bold text-stone-600">
                     {formatRupiah(p.cogs)}
                   </td>
+                  <td className="py-4 text-xs">
+                    {p.addons && p.addons.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {p.addons.map((g) => (
+                          <span
+                            key={g.id}
+                            className="bg-pink-50 border border-pink-200 text-[#D81B60] font-black px-2 py-0.5 rounded text-[10px]"
+                          >
+                            {g.name} ({g.options.length})
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-stone-400 font-bold text-[11px]">
+                        Standar (Otomatis)
+                      </span>
+                    )}
+                  </td>
                   <td className="py-4 text-right whitespace-nowrap">
                     <button
                       onClick={() => openEdit(p)}
@@ -280,76 +435,269 @@ function ManagementMenu({
       </div>
 
       {isModalOpen && (
-        <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 p-6 flex flex-col justify-center items-center">
-          <div className="bg-white border text-left border-stone-200 shadow-xl rounded-2xl w-full max-w-sm p-6">
-            <h3 className="text-lg font-bold text-stone-800 mb-4">
-              {editingProduct ? "Edit Product" : "Add Product"}
-            </h3>
-            <div className="space-y-3 mb-6">
+        <div className="absolute inset-0 bg-stone-900/60 backdrop-blur-xs z-20 p-4 sm:p-6 flex flex-col justify-center items-center overflow-y-auto">
+          <div className="bg-white border text-left border-stone-200 shadow-2xl rounded-3xl w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-stone-200 flex justify-between items-center bg-stone-50">
               <div>
-                <label className="text-xs font-bold text-stone-500">Name</label>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-sm mt-1 outline-none focus:border-[#D81B60]"
-                />
+                <h3 className="text-base font-black text-stone-900">
+                  {editingProduct ? "Edit Produk & Add-ons" : "Tambah Produk Baru"}
+                </h3>
+                <p className="text-[11px] text-stone-500 font-bold">
+                  Atur detail menu serta opsi pilihan kustomisasi kasir
+                </p>
               </div>
-              <div>
-                <label className="text-xs font-bold text-stone-500">
-                  Category
-                </label>
-                <select
-                  value={form.category}
-                  onChange={(e) =>
-                    setForm({ ...form, category: e.target.value as Category })
-                  }
-                  className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-sm mt-1 outline-none focus:border-[#D81B60]"
-                >
-                  {categories.map((cat) => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-bold text-stone-500">
-                  Price (Selling Price)
-                </label>
-                <input
-                  type="number"
-                  value={form.price || ""}
-                  onChange={(e) =>
-                    setForm({ ...form, price: parseInt(e.target.value) || 0 })
-                  }
-                  className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-sm mt-1 outline-none focus:border-[#D81B60]"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-stone-500">
-                  COGS (Base Cost)
-                </label>
-                <input
-                  type="number"
-                  value={form.cogs || ""}
-                  onChange={(e) =>
-                    setForm({ ...form, cogs: parseInt(e.target.value) || 0 })
-                  }
-                  className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-sm mt-1 outline-none focus:border-[#D81B60]"
-                />
-              </div>
-            </div>
-            <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-sm font-bold text-stone-500 hover:bg-stone-50"
+                className="text-stone-400 hover:text-stone-700 p-1.5 rounded-lg"
               >
-                Cancel
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto custom-scrollbar space-y-5 flex-1">
+              {/* Basic Details */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-black text-stone-700 block mb-1">
+                    Nama Menu Produk
+                  </label>
+                  <input
+                    type="text"
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    className="w-full bg-stone-50 border-2 border-stone-200 rounded-xl px-3.5 py-2 text-sm outline-none focus:border-[#D81B60] font-bold text-stone-900"
+                    placeholder="Contoh: Iced Caramel Macchiato"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-black text-stone-700 block mb-1">
+                    Kategori Menu
+                  </label>
+                  <select
+                    value={form.category}
+                    onChange={(e) =>
+                      setForm({ ...form, category: e.target.value as Category })
+                    }
+                    className="w-full bg-stone-50 border-2 border-stone-200 rounded-xl px-3.5 py-2 text-sm outline-none focus:border-[#D81B60] font-bold text-stone-900"
+                  >
+                    {categories.map((cat) => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-black text-stone-700 block mb-1">
+                    Harga Jual (Rp)
+                  </label>
+                  <input
+                    type="number"
+                    value={form.price || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, price: parseInt(e.target.value) || 0 })
+                    }
+                    className="w-full bg-stone-50 border-2 border-stone-200 rounded-xl px-3.5 py-2 text-sm outline-none focus:border-[#D81B60] font-bold text-stone-900"
+                    placeholder="25000"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-black text-stone-700 block mb-1">
+                    Modal / HPP (COGS) (Rp)
+                  </label>
+                  <input
+                    type="number"
+                    value={form.cogs || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, cogs: parseInt(e.target.value) || 0 })
+                    }
+                    className="w-full bg-stone-50 border-2 border-stone-200 rounded-xl px-3.5 py-2 text-sm outline-none focus:border-[#D81B60] font-bold text-stone-900"
+                    placeholder="12000"
+                  />
+                </div>
+              </div>
+
+              {/* Addons Customizer Section */}
+              <div className="pt-4 border-t-2 border-stone-100">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-3">
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <SlidersHorizontal size={14} className="text-[#D81B60]" />
+                      <h4 className="text-xs font-black text-stone-900 uppercase tracking-wide">
+                        Kustomisasi Add-ons (Popup Kasir)
+                      </h4>
+                    </div>
+                    <p className="text-[11px] text-stone-500 font-bold">
+                      Pilihan yang muncul saat kasir mengklik menu ini (less sugar, es, topping, dll)
+                    </p>
+                  </div>
+                </div>
+
+                {/* Preset quick buttons */}
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                  <button
+                    type="button"
+                    onClick={applyBeveragePreset}
+                    className="text-[11px] font-black bg-pink-50 text-[#D81B60] hover:bg-pink-100 border border-pink-200 px-2.5 py-1 rounded-lg transition-colors"
+                  >
+                    + Preset Minuman (Gula & Es)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyDessertPreset}
+                    className="text-[11px] font-black bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 px-2.5 py-1 rounded-lg transition-colors"
+                  >
+                    + Preset Dessert (Suhu & Topping)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={addAddonGroup}
+                    className="text-[11px] font-black bg-stone-100 text-stone-800 hover:bg-stone-200 border border-stone-200 px-2.5 py-1 rounded-lg transition-colors"
+                  >
+                    + Tambah Grup Baru
+                  </button>
+                  {form.addons && form.addons.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={clearAddons}
+                      className="text-[11px] font-bold text-rose-600 hover:bg-rose-50 px-2.5 py-1 rounded-lg transition-colors ml-auto"
+                    >
+                      Hapus Semua
+                    </button>
+                  )}
+                </div>
+
+                {/* Groups list */}
+                {(!form.addons || form.addons.length === 0) ? (
+                  <div className="p-4 bg-stone-50 rounded-2xl border-2 border-dashed border-stone-200 text-center text-stone-400 text-xs font-bold">
+                    Tidak ada kustomisasi khusus. Klik salah satu tombol preset di atas untuk menambahkan pilihan addons ke menu ini.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {form.addons.map((group, gIdx) => (
+                      <div
+                        key={group.id || gIdx}
+                        className="p-3.5 bg-stone-50 rounded-2xl border-2 border-stone-200 space-y-3"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <input
+                            type="text"
+                            value={group.name}
+                            onChange={(e) => {
+                              const next = [...(form.addons || [])];
+                              next[gIdx] = { ...next[gIdx], name: e.target.value };
+                              setForm({ ...form, addons: next });
+                            }}
+                            className="text-xs font-black text-stone-900 bg-white border border-stone-300 rounded-lg px-2.5 py-1.5 flex-1 outline-none focus:border-[#D81B60]"
+                            placeholder="Nama Grup (e.g. Level Gula / Topping)"
+                          />
+                          <select
+                            value={group.type}
+                            onChange={(e) => {
+                              const next = [...(form.addons || [])];
+                              next[gIdx] = { ...next[gIdx], type: e.target.value as "single" | "multiple" };
+                              setForm({ ...form, addons: next });
+                            }}
+                            className="text-xs font-bold text-stone-800 bg-white border border-stone-300 rounded-lg px-2 py-1.5 outline-none"
+                          >
+                            <option value="single">1 Pilihan (Radio)</option>
+                            <option value="multiple">Banyak (Checkbox)</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = (form.addons || []).filter((_, idx) => idx !== gIdx);
+                              setForm({ ...form, addons: next });
+                            }}
+                            className="text-stone-400 hover:text-rose-600 p-1.5"
+                            title="Hapus Grup Ini"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+
+                        {/* Options inside this group */}
+                        <div className="space-y-2 pl-2 border-l-2 border-[#D81B60]/30">
+                          {group.options.map((opt, oIdx) => (
+                            <div key={opt.id || oIdx} className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={opt.name}
+                                onChange={(e) => {
+                                  const next = [...(form.addons || [])];
+                                  const nextOpts = [...next[gIdx].options];
+                                  nextOpts[oIdx] = { ...nextOpts[oIdx], name: e.target.value };
+                                  next[gIdx] = { ...next[gIdx], options: nextOpts };
+                                  setForm({ ...form, addons: next });
+                                }}
+                                placeholder="Nama Opsi (e.g. Less Sugar)"
+                                className="flex-1 text-xs font-bold text-stone-900 bg-white border border-stone-200 rounded-lg px-2 py-1 outline-none focus:border-[#D81B60]"
+                              />
+                              <div className="relative w-28">
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-stone-400 font-bold">+Rp</span>
+                                <input
+                                  type="number"
+                                  value={opt.price || ""}
+                                  onChange={(e) => {
+                                    const next = [...(form.addons || [])];
+                                    const nextOpts = [...next[gIdx].options];
+                                    nextOpts[oIdx] = { ...nextOpts[oIdx], price: parseInt(e.target.value) || 0 };
+                                    next[gIdx] = { ...next[gIdx], options: nextOpts };
+                                    setForm({ ...form, addons: next });
+                                  }}
+                                  placeholder="0"
+                                  className="w-full text-xs font-mono font-bold text-stone-900 bg-white border border-stone-200 rounded-lg pl-8 pr-2 py-1 outline-none text-right focus:border-[#D81B60]"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const next = [...(form.addons || [])];
+                                  next[gIdx].options = next[gIdx].options.filter((_, idx) => idx !== oIdx);
+                                  setForm({ ...form, addons: next });
+                                }}
+                                className="text-stone-300 hover:text-rose-500 p-1"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = [...(form.addons || [])];
+                              next[gIdx].options.push({
+                                id: `opt-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+                                name: "Opsi Baru",
+                                price: 0,
+                              });
+                              setForm({ ...form, addons: next });
+                            }}
+                            className="text-[11px] font-bold text-[#D81B60] hover:underline pt-1 flex items-center gap-1"
+                          >
+                            <Plus size={12} strokeWidth={3} /> Tambah Opsi ke Grup Ini
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 border-t border-stone-200 bg-stone-50 flex gap-2 justify-end">
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="px-4 py-2.5 rounded-xl text-xs font-black text-stone-600 hover:bg-stone-200 transition-colors"
+              >
+                Batal
               </button>
               <button
                 onClick={saveProduct}
-                className="px-4 py-2 rounded-xl text-sm font-bold bg-[#D81B60] text-white hover:brightness-110"
+                className="px-5 py-2.5 rounded-xl text-xs font-black bg-[#D81B60] text-white hover:brightness-110 shadow-xs transition-all flex items-center gap-2"
               >
-                Save
+                <Save size={14} /> Simpan Menu & Add-ons
               </button>
             </div>
           </div>
@@ -535,239 +883,6 @@ function ManagementHistory({
                 })}
               </tbody>
             </table>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ManagementFinance({
-  orderHistory,
-  expenses,
-  setExpenses,
-  productList,
-}: {
-  orderHistory: any[];
-  expenses: any[];
-  setExpenses: any;
-  productList: Product[];
-}) {
-  const [filter, setFilter] = useState<
-    "DAILY" | "THIS_MONTH" | "ALL" | "CUSTOM"
-  >("DAILY");
-  const [customStart, setCustomStart] = useState<string>(
-    () => new Date().toISOString().split("T")[0],
-  );
-  const [customEnd, setCustomEnd] = useState<string>(
-    () => new Date().toISOString().split("T")[0],
-  );
-
-  const parsedOrders = useMemo(() => {
-    const history = Array.isArray(orderHistory) ? orderHistory : [];
-    return history.map((o) => {
-      if (!o) return o;
-      const total = parseIndonesianNumber(o.total);
-      const subtotal = parseIndonesianNumber(o.subtotal || o.total);
-      const discount = parseIndonesianNumber(o.discount);
-      const tax = parseIndonesianNumber(o.tax);
-      const cashGiven = parseIndonesianNumber(o.cashGiven);
-      const change = parseIndonesianNumber(o.change);
-      const snapshot = getCartSnapshotOrFallback(o, productList);
-      
-      return {
-        ...o,
-        total,
-        subtotal,
-        discount,
-        tax,
-        cashGiven,
-        change,
-        cartSnapshot: snapshot,
-      };
-    });
-  }, [orderHistory, productList]);
-
-  const parsedExpenses = useMemo(() => {
-    const list = Array.isArray(expenses) ? expenses : [];
-    return list.map((e) => {
-      if (!e) return e;
-      const amount = parseIndonesianNumber(e.amount);
-      return {
-        ...e,
-        amount,
-      };
-    });
-  }, [expenses]);
-
-  const filteredOrders = useMemo(() => {
-    return parsedOrders.filter((o) => {
-      if (!o || !o.timestamp) return false;
-      const date = new Date(o.timestamp);
-      if (isNaN(date.getTime())) return false;
-      const now = new Date();
-      if (filter === "DAILY") return date.toDateString() === now.toDateString();
-      if (filter === "THIS_MONTH")
-        return (
-          date.getMonth() === now.getMonth() &&
-          date.getFullYear() === now.getFullYear()
-        );
-      if (filter === "CUSTOM") {
-        const d = new Date(date.toISOString().split("T")[0]); // ignore time for comparison
-        const start = new Date(customStart);
-        const end = new Date(customEnd);
-        return d >= start && d <= end;
-      }
-      return true;
-    });
-  }, [parsedOrders, filter, customStart, customEnd]);
-
-  const filteredExpenses = useMemo(() => {
-    return parsedExpenses.filter((e) => {
-      if (!e || !e.timestamp) return false;
-      const date = new Date(e.timestamp);
-      if (isNaN(date.getTime())) return false;
-      const now = new Date();
-      if (filter === "DAILY") return date.toDateString() === now.toDateString();
-      if (filter === "THIS_MONTH")
-        return (
-          date.getMonth() === now.getMonth() &&
-          date.getFullYear() === now.getFullYear()
-        );
-      if (filter === "CUSTOM") {
-        const d = new Date(date.toISOString().split("T")[0]);
-        const start = new Date(customStart);
-        const end = new Date(customEnd);
-        return d >= start && d <= end;
-      }
-      return true;
-    });
-  }, [parsedExpenses, filter, customStart, customEnd]);
-
-  const totalRevenue = filteredOrders.reduce((acc, o) => acc + o.total, 0);
-  const totalCOGS = filteredOrders.reduce((acc, o) => {
-    const snapshot = o.cartSnapshot || [];
-    const cogs = snapshot.reduce(
-      (cAcc: number, item: any) => cAcc + (item.cogs || 0) * item.quantity,
-      0,
-    );
-    return acc + cogs;
-  }, 0);
-  const totalExpense = filteredExpenses.reduce((acc, e) => acc + e.amount, 0);
-
-  const grossProfit = totalRevenue - totalCOGS;
-  const netProfit = grossProfit - totalExpense;
-
-  return (
-    <div className="p-6 h-full flex flex-col">
-      <div className="flex flex-col gap-4 mb-6">
-        <div className="flex justify-between items-center">
-          <h3 className="text-lg font-bold text-stone-800">
-            Finance & Reporting
-          </h3>
-          <div className="flex bg-stone-100 p-1 rounded-xl">
-            {(["DAILY", "THIS_MONTH", "ALL", "CUSTOM"] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${filter === f ? "bg-white shadow-sm text-stone-800" : "text-stone-500 hover:text-stone-700"}`}
-              >
-                {f.replace("_", " ")}
-              </button>
-            ))}
-          </div>
-        </div>
-        {filter === "CUSTOM" && (
-          <div className="flex items-center gap-3 self-end bg-stone-50 p-2 rounded-xl border border-stone-200">
-            <span className="text-xs font-bold text-stone-500">From</span>
-            <input
-              type="date"
-              value={customStart}
-              onChange={(e) => setCustomStart(e.target.value)}
-              className="bg-white border border-stone-200 text-stone-800 text-xs px-2 py-1 rounded-md"
-            />
-            <span className="text-xs font-bold text-stone-500">To</span>
-            <input
-              type="date"
-              value={customEnd}
-              onChange={(e) => setCustomEnd(e.target.value)}
-              className="bg-white border border-stone-200 text-stone-800 text-xs px-2 py-1 rounded-md"
-            />
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-4 gap-4 mb-8">
-        <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 shadow-sm">
-          <p className="text-[10px] font-bold text-emerald-800 uppercase tracking-widest mb-1.5">
-            Pemasukan (Revenue)
-          </p>
-          <p className="text-2xl font-black text-emerald-600 tracking-tight">
-            {formatRupiah(totalRevenue)}
-          </p>
-        </div>
-        <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 shadow-sm">
-          <p className="text-[10px] font-bold text-blue-800 uppercase tracking-widest mb-1.5">
-            Harga Pokok (COGS)
-          </p>
-          <p className="text-2xl font-black text-blue-600 tracking-tight">
-            {formatRupiah(totalCOGS)}
-          </p>
-        </div>
-        <div className="bg-rose-50 p-4 rounded-2xl border border-rose-100 shadow-sm">
-          <p className="text-[10px] font-bold text-rose-800 uppercase tracking-widest mb-1.5">
-            Pengeluaran (Expenses)
-          </p>
-          <p className="text-2xl font-black text-rose-600 tracking-tight">
-            {formatRupiah(totalExpense)}
-          </p>
-        </div>
-        <div
-          className={`${netProfit >= 0 ? "bg-amber-50 border-amber-200" : "bg-red-50 border-red-200"} p-4 rounded-2xl border shadow-sm`}
-        >
-          <p
-            className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 ${netProfit >= 0 ? "text-amber-800" : "text-red-800"}`}
-          >
-            Laba Bersih (Net Profit)
-          </p>
-          <p
-            className={`text-2xl font-black tracking-tight ${netProfit >= 0 ? "text-amber-600" : "text-red-600"}`}
-          >
-            {formatRupiah(netProfit)}
-          </p>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 flex flex-col">
-        <h4 className="font-bold text-sm text-stone-800 mb-3 border-b border-stone-100 pb-2">
-          Daftar Pengeluaran Operasional
-        </h4>
-        {filteredExpenses.length === 0 ? (
-          <p className="text-xs text-stone-400 font-medium py-4">
-            Belum ada catatan pengeluaran di periode ini.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {filteredExpenses.map((e, idx) => (
-              <div
-                key={`${e.id}-${idx}`}
-                className="flex justify-between items-center bg-white p-3 rounded-xl border border-stone-100 shadow-sm"
-              >
-                <div>
-                  <p className="text-sm font-bold text-stone-800">{e.desc}</p>
-                  <p className="text-[10px] text-stone-400 font-semibold mt-0.5">
-                    {new Date(e.timestamp).toLocaleDateString("id-ID")}{" "}
-                    {new Date(e.timestamp).toLocaleTimeString("id-ID", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </p>
-                </div>
-                <p className="text-sm font-bold text-rose-600 font-mono">
-                  -{formatRupiah(e.amount)}
-                </p>
-              </div>
-            ))}
           </div>
         )}
       </div>
@@ -1172,364 +1287,629 @@ function ManagementCOGS({ productList }: { productList: Product[] }) {
   );
 }
 
-function ManagementPerformance({ orderHistory }: { orderHistory: any[] }) {
-  const history = Array.isArray(orderHistory) ? orderHistory : [];
-  const itemCounts = history.reduce(
-    (acc, order) => {
-      let snapshot = order && order.cartSnapshot;
-      if (typeof snapshot === 'string') {
-        try {
-          snapshot = JSON.parse(snapshot);
-        } catch (e) {
-          snapshot = null;
-        }
-      }
-
-      if (snapshot && Array.isArray(snapshot)) {
-        snapshot.forEach((item: any) => {
-          if (item && item.name) {
-            acc[item.name] = (acc[item.name] || 0) + item.quantity;
-          }
-        });
-      } else if (order && order.items && typeof order.items === 'string') {
-        // Can be comma-separated or newline-separated
-        const parts = order.items.includes('\n') ? order.items.split('\n') : order.items.split(', ');
-        parts.forEach((p: string) => {
-          const match = p.match(/(.+?)\s*\((\d+)x\)/);
-          if (match) {
-            const name = match[1].trim();
-            const qty = parseInt(match[2]) || 1;
-            acc[name] = (acc[name] || 0) + qty;
-          } else {
-            const match2 = p.match(/^(\d+)x\s+(.+)$/);
-            if (match2) {
-              const qty = parseInt(match2[1]) || 1;
-              let name = match2[2].trim();
-              name = name.replace(/\s*\(Rp\s*\d+[.,]?\d*\)/i, '').trim();
-              acc[name] = (acc[name] || 0) + qty;
-            }
-          }
-        });
-      }
-      return acc;
-    },
-    {} as Record<string, number>,
-  );
-
-  const sortedItems = Object.entries(itemCounts).sort(
-    (a, b) => (b[1] as number) - (a[1] as number),
-  );
-
-  return (
-    <div className="p-6 h-full flex flex-col">
-      <div className="flex items-center mb-6">
-        <h3 className="text-lg font-bold text-stone-800">
-          Business Performance
-        </h3>
-      </div>
-      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <h4 className="font-bold text-sm text-stone-800 mb-4 pb-2 border-b">
-            Top Selling Items
-          </h4>
-          {sortedItems.length === 0 ? (
-            <p className="text-xs text-stone-400">Belum ada data penjualan.</p>
-          ) : (
-            <div className="space-y-3">
-              {sortedItems.slice(0, 10).map(([name, qty], idx) => (
-                <div
-                   key={name}
-                  className="flex justify-between items-center bg-stone-50 p-3 rounded-lg border border-stone-100"
-                >
-                  <span className="text-sm font-bold text-stone-700 flex items-center gap-3">
-                    <span className="w-5 text-center text-xs text-stone-400">
-                      {idx + 1}.
-                    </span>{" "}
-                    {name}
-                  </span>
-                  <span className="text-xs font-bold bg-[#D81B60] text-white px-2 py-1 rounded-md">
-                    {qty as number} terjual
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <div>
-          <h4 className="font-bold text-sm text-stone-800 mb-4 pb-2 border-b">
-            Order Types
-          </h4>
-          <div className="flex justify-around mt-8">
-            <div className="text-center p-4 bg-blue-50 rounded-2xl w-32 outline outline-1 outline-blue-100">
-              <p className="text-3xl font-black text-blue-600">
-                {history.filter((o) => o?.orderType === "Dine-in").length}
-              </p>
-              <p className="text-[10px] font-bold text-blue-800 uppercase tracking-widest mt-2">
-                Dine-In
-              </p>
-            </div>
-            <div className="text-center p-4 bg-orange-50 rounded-2xl w-32 outline outline-1 outline-orange-100">
-              <p className="text-3xl font-black text-orange-600">
-                {history.filter((o) => o?.orderType === "Takeaway").length}
-              </p>
-              <p className="text-[10px] font-bold text-orange-800 uppercase tracking-widest mt-2">
-                Takeaway
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export interface CartItem extends Product {
   cartId: string;
   quantity: number;
+  selectedAddons?: SelectedAddon[];
+  itemNotes?: string;
+  basePrice?: number;
 }
 
 function ManagementSettings({
   receiptSettings,
   setReceiptSettings,
   onTestPrint,
+  onMigrateAllToFirebase,
+  onImportFromSheets,
+  isMigrating,
+  isImportingSheets,
+  firebaseConnected,
+  orderHistoryCount = 0,
+  productListCount = 0,
+  categoryCount = 0,
 }: {
   receiptSettings: any;
   setReceiptSettings: any;
   onTestPrint?: () => void;
+  onMigrateAllToFirebase?: () => Promise<void>;
+  onImportFromSheets?: () => Promise<void>;
+  isMigrating?: boolean;
+  isImportingSheets?: boolean;
+  firebaseConnected?: boolean;
+  orderHistoryCount?: number;
+  productListCount?: number;
+  categoryCount?: number;
 }) {
   return (
     <div className="p-4 sm:p-6 h-full flex flex-col">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
-          <h3 className="text-lg font-bold text-stone-800">
-            Pengaturan Struk (Receipt 80mm)
+          <h3 className="text-xl font-black text-stone-900">
+            System, Cloud & Receipt Settings
           </h3>
-          <p className="text-xs text-stone-500 mt-0.5">
-            Sesuaikan informasi kop toko, kontak, footer, dan QR Code untuk printer thermal 80mm.
+          <p className="text-xs text-stone-600 font-bold mt-0.5">
+            Kelola backend Firebase Firestore, migrasi data dari Excel/Google Sheets, dan cetak nota thermal 80mm kontras tebal.
           </p>
         </div>
         {onTestPrint && (
           <button
             onClick={onTestPrint}
-            className="self-start sm:self-auto bg-[#D81B60] hover:brightness-110 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition-all"
+            className="self-start sm:self-auto bg-stone-950 hover:bg-black text-white px-4 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-xs transition-all border border-stone-800"
           >
-            <Printer size={15} /> Cetak Struk Uji Coba (Test Print)
+            <Printer size={15} /> Cetak Struk Uji Coba (80mm Kontras Tebal)
           </button>
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Form Settings */}
-        <div className="lg:col-span-7 bg-stone-50 p-5 rounded-2xl border border-stone-200 shadow-sm flex flex-col gap-4">
-          <div>
-            <label className="block text-xs font-bold text-stone-600 mb-1">
-              Nama Toko / Brand
-            </label>
-            <input
-              type="text"
-              value={receiptSettings.storeName || ""}
-              onChange={(e) =>
-                setReceiptSettings({ ...receiptSettings, storeName: e.target.value })
-              }
-              className="w-full text-sm p-3 rounded-xl border border-stone-200 bg-white outline-none focus:border-[#D81B60] font-bold text-stone-800"
-              placeholder="Legiy's Dessert"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-stone-600 mb-1">
-                Alamat Toko
-              </label>
-              <textarea
-                value={receiptSettings.storeAddress || ""}
-                onChange={(e) =>
-                  setReceiptSettings({ ...receiptSettings, storeAddress: e.target.value })
-                }
-                rows={2}
-                className="w-full text-sm p-3 rounded-xl border border-stone-200 bg-white outline-none focus:border-[#D81B60]"
-                placeholder="Perumahan TSI, Blok O.14, Cirebon"
-              />
+      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6">
+        {/* Firebase Cloud Backend & Data Migration Card */}
+        <div className="bg-white rounded-2xl border-2 border-stone-200 p-5 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone-200">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-orange-100 border border-orange-200 flex items-center justify-center text-orange-600">
+                <Database size={20} />
+              </div>
+              <div>
+                <h4 className="text-base font-black text-stone-900 flex items-center gap-2">
+                  Firebase Cloud Firestore & Excel Migration
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
+                    {firebaseConnected ? "Terhubung Cloud (Real-time)" : "Connecting..."}
+                  </span>
+                </h4>
+                <p className="text-xs text-stone-600 font-bold mt-0.5">
+                  Semua data tersimpan terpusat di Firestore. Riwayat nota dan produk dari Excel telah dimigrasikan.
+                </p>
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-bold text-stone-600 mb-1">
-                Nomor Telepon / WhatsApp
-              </label>
-              <input
-                type="text"
-                value={receiptSettings.storePhone || ""}
-                onChange={(e) =>
-                  setReceiptSettings({ ...receiptSettings, storePhone: e.target.value })
-                }
-                className="w-full text-sm p-3 rounded-xl border border-stone-200 bg-white outline-none focus:border-[#D81B60]"
-                placeholder="0812-1252-7520"
-              />
-              <p className="text-[10px] text-stone-400 mt-1">Dicetak di bawah alamat toko</p>
-            </div>
-          </div>
 
-          <div>
-            <label className="block text-xs font-bold text-stone-600 mb-1">
-              Link QR Code (Linktree / Medsos)
-            </label>
-            <input
-              type="text"
-              value={receiptSettings.qrCodeUrl || ""}
-              onChange={(e) =>
-                setReceiptSettings({ ...receiptSettings, qrCodeUrl: e.target.value })
-              }
-              className="w-full text-sm p-3 rounded-xl border border-stone-200 bg-white outline-none focus:border-[#D81B60] font-mono text-xs text-blue-600"
-              placeholder="https://linktr.ee/legiy_dessert"
-            />
-            <p className="text-[10px] text-stone-400 mt-1">QR Code akan otomatis dibuat dan dicetak di bagian bawah struk</p>
-          </div>
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+              {onImportFromSheets && (
+                <button
+                  onClick={onImportFromSheets}
+                  disabled={isImportingSheets || isMigrating}
+                  className="bg-emerald-700 hover:bg-emerald-800 text-white px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all disabled:opacity-50 shadow-xs shrink-0"
+                  title="Tarik seluruh data produk & riwayat pesanan dari Excel / Google Sheets ke Firestore"
+                >
+                  {isImportingSheets ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" />
+                      Menarik dari Sheets...
+                    </>
+                  ) : (
+                    <>
+                      <ArrowDownToLine size={14} />
+                      Tarik Ulang dari Excel/Sheets
+                    </>
+                  )}
+                </button>
+              )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-stone-600 mb-1">
-                Footer / Pesan Baris 1
-              </label>
-              <input
-                type="text"
-                value={receiptSettings.footerText1 || ""}
-                onChange={(e) =>
-                  setReceiptSettings({ ...receiptSettings, footerText1: e.target.value })
-                }
-                className="w-full text-sm p-3 rounded-xl border border-stone-200 bg-white outline-none focus:border-[#D81B60]"
-                placeholder="Terima kasih atas kunjungannya!"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-stone-600 mb-1">
-                Footer / Pesan Baris 2
-              </label>
-              <input
-                type="text"
-                value={receiptSettings.footerText2 || ""}
-                onChange={(e) =>
-                  setReceiptSettings({ ...receiptSettings, footerText2: e.target.value })
-                }
-                className="w-full text-sm p-3 rounded-xl border border-stone-200 bg-white outline-none focus:border-[#D81B60]"
-                placeholder="Manisnya pas, bikin harimu lebih ceria :)"
-              />
+              {onMigrateAllToFirebase && (
+                <button
+                  onClick={onMigrateAllToFirebase}
+                  disabled={isMigrating || isImportingSheets}
+                  className="bg-stone-900 hover:bg-black text-white px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all disabled:opacity-50 shadow-xs shrink-0"
+                >
+                  {isMigrating ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" />
+                      Sedang Menyinkronkan...
+                    </>
+                  ) : (
+                    <>
+                      <Cloud size={14} />
+                      Sinkron Lokal ke Cloud
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
 
-          <div className="mt-2 bg-pink-50/70 border border-pink-100 text-stone-700 p-3.5 rounded-xl text-xs flex items-center gap-2.5">
-            <CheckCircle size={16} className="text-[#D81B60] flex-shrink-0" />
-            <span>Format telah disesuaikan untuk printer <strong>Thermal 80mm</strong>. Semua perubahan langsung tersimpan otomatis.</span>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 text-xs">
+            <div className="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
+              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 block mb-0.5">
+                Riwayat Pesanan (Excel)
+              </span>
+              <span className="font-mono font-black text-base text-emerald-950">
+                {orderHistoryCount} Pesanan
+              </span>
+            </div>
+            <div className="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
+              <span className="text-[10px] font-black uppercase tracking-wider text-blue-800 block mb-0.5">
+                Produk Menu Aktif
+              </span>
+              <span className="font-mono font-black text-base text-blue-950">
+                {productListCount} Item
+              </span>
+            </div>
+            <div className="bg-amber-50/70 p-3 rounded-xl border border-amber-200">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 block mb-0.5">
+                Kategori Menu
+              </span>
+              <span className="font-mono font-black text-base text-amber-950">
+                {categoryCount} Kategori
+              </span>
+            </div>
+            <div className="bg-stone-50 p-3 rounded-xl border border-stone-200">
+              <span className="text-[10px] font-black uppercase tracking-wider text-stone-600 block mb-0.5">
+                Status Penyimpanan
+              </span>
+              <span className="font-black text-xs text-stone-900 flex items-center gap-1.5 mt-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                Firestore Persistent
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Live Preview Card (80mm style) */}
-        <div className="lg:col-span-5 flex flex-col items-center">
-          <div className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-            <span>Pratinjau Struk (80mm Width)</span>
-          </div>
-          <div className="bg-white border-2 border-stone-300 shadow-lg rounded-xl p-5 w-full max-w-[340px] text-black font-mono text-[11px] leading-relaxed select-none">
-            {/* Header */}
-            <div className="text-center pb-2">
-              <img
-                src={STORE_LOGO}
-                alt="Logo"
-                className="w-28 sm:w-32 h-auto mx-auto mb-2 object-contain"
-              />
-              <div className="font-bold text-[14px] uppercase tracking-wider text-black">
-                {receiptSettings.storeName || "Legiy's Dessert"}
-              </div>
-              <div className="text-[10px] text-stone-600 mt-0.5">
-                {receiptSettings.storeAddress || "Perumahan TSI, Blok O.14, Cirebon"}
-              </div>
-              <div className="text-[10px] font-bold text-stone-800 mt-0.5">
-                {receiptSettings.storePhone || "0812-1252-7520"}
-              </div>
-            </div>
-
-            <div className="border-b border-dashed border-stone-400 my-2"></div>
-
-            {/* Info */}
-            <div className="text-[10px] space-y-0.5 text-stone-700">
-              <div className="flex justify-between">
-                <span>No. Struk</span>
-                <span className="font-bold text-black">LGY-892104</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Tanggal</span>
-                <span>{new Date().toLocaleDateString("id-ID")} {new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Customer</span>
-                <span className="font-bold text-black">Kak Amanda</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Tipe Pesanan</span>
-                <span className="font-bold text-black">Dine-in</span>
-              </div>
-            </div>
-
-            <div className="border-b border-dashed border-stone-400 my-2"></div>
-
-            {/* Sample items */}
-            <div className="space-y-1.5 text-[10.5px]">
+        {/* Receipt Settings & Live Preview Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Form Settings */}
+          <div className="lg:col-span-7 bg-white p-5 rounded-2xl border-2 border-stone-200 shadow-xs flex flex-col gap-5">
+            <div className="pb-3 border-b border-stone-100 flex items-center justify-between">
               <div>
-                <div className="font-bold text-black">Pistachio Crepe Cake</div>
-                <div className="flex justify-between text-stone-600">
-                  <span>1 x 38.000</span>
-                  <span className="font-bold text-black">38.000</span>
+                <h4 className="text-sm font-black text-stone-900 flex items-center gap-2">
+                  <Receipt size={18} className="text-[#D81B60]" />
+                  Kustomisasi Format Nota Thermal 80mm
+                </h4>
+                <p className="text-xs text-stone-500 font-medium mt-0.5">
+                  Atur identitas gerai, alamat cabang, quotes manis di bawah nota, dan QR Code.
+                </p>
+              </div>
+              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-pink-50 border border-pink-200 text-[#D81B60] text-[11px] font-black">
+                <Sparkles size={12} />
+                Live Preview
+              </div>
+            </div>
+
+            {/* Section 1: Identitas & Lokasi Gerai */}
+            <div className="space-y-3">
+              <span className="text-[11px] font-black uppercase tracking-wider text-stone-500 flex items-center gap-1.5">
+                <Store size={13} className="text-stone-700" />
+                1. Identitas & Lokasi Toko
+              </span>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-black text-stone-700 mb-1">
+                    Nama Toko / Brand
+                  </label>
+                  <input
+                    type="text"
+                    value={receiptSettings.storeName || ""}
+                    onChange={(e) =>
+                      setReceiptSettings({ ...receiptSettings, storeName: e.target.value })
+                    }
+                    className="w-full text-sm p-2.5 rounded-xl border-2 border-stone-200 bg-white outline-none focus:border-[#D81B60] font-black text-stone-900"
+                    placeholder="Legiy's Dessert"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-stone-700 mb-1">
+                    Slogan / Tagline
+                  </label>
+                  <input
+                    type="text"
+                    value={receiptSettings.storeTagline || ""}
+                    onChange={(e) =>
+                      setReceiptSettings({ ...receiptSettings, storeTagline: e.target.value })
+                    }
+                    className="w-full text-sm p-2.5 rounded-xl border-2 border-stone-200 bg-white outline-none focus:border-[#D81B60] font-medium text-stone-800"
+                    placeholder="Sweet Delights & Artisanal Desserts"
+                  />
                 </div>
               </div>
+
               <div>
-                <div className="font-bold text-black">Iced Caramel Macchiato</div>
-                <div className="flex justify-between text-stone-600">
-                  <span>2 x 25.000</span>
-                  <span className="font-bold text-black">50.000</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="border-b border-dashed border-stone-400 my-2"></div>
-
-            {/* Totals */}
-            <div className="space-y-1 text-[10.5px]">
-              <div className="flex justify-between">
-                <span>Subtotal</span>
-                <span>88.000</span>
-              </div>
-              <div className="border-b border-dashed border-stone-300 my-1"></div>
-              <div className="flex justify-between font-black text-[13px] text-black pt-0.5">
-                <span>TOTAL</span>
-                <span>Rp 88.000</span>
-              </div>
-              <div className="flex justify-between pt-1 text-stone-700">
-                <span>Bayar (QRIS)</span>
-                <span>88.000</span>
-              </div>
-            </div>
-
-            <div className="border-b border-dashed border-stone-400 my-2.5"></div>
-
-            {/* Footer & QR Code */}
-            <div className="text-center pt-1 flex flex-col items-center">
-              <div className="text-[10px] text-stone-600 mb-0.5">
-                {receiptSettings.footerText1 || "Terima kasih atas kunjungannya!"}
-              </div>
-              <div className="text-[10px] font-bold text-stone-800 mb-2">
-                {receiptSettings.footerText2 || "Manisnya pas, bikin harimu lebih ceria :)"}
-              </div>
-
-              {/* QR Code */}
-              <div className="bg-white p-1.5 rounded-lg border border-stone-200 inline-block shadow-sm">
-                <QRCodeCanvas
-                  value={receiptSettings.qrCodeUrl || "https://linktr.ee/legiy_dessert"}
-                  size={80}
-                  level="M"
+                <label className="block text-xs font-black text-stone-700 mb-1">
+                  Alamat Lengkap Toko
+                </label>
+                <textarea
+                  value={receiptSettings.storeAddress || ""}
+                  onChange={(e) =>
+                    setReceiptSettings({ ...receiptSettings, storeAddress: e.target.value })
+                  }
+                  rows={2}
+                  className="w-full text-sm p-2.5 rounded-xl border-2 border-stone-200 bg-white outline-none focus:border-[#D81B60] font-medium text-stone-800"
+                  placeholder="Perumahan TSI, Blok O.14, Cirebon"
                 />
               </div>
-              <div className="text-[9px] font-bold text-stone-500 mt-1.5 uppercase tracking-wider">
-                Scan di sini untuk Linktree & Menu
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-black text-stone-700 mb-1">
+                    No. WhatsApp / Telepon
+                  </label>
+                  <input
+                    type="text"
+                    value={receiptSettings.storePhone || ""}
+                    onChange={(e) =>
+                      setReceiptSettings({ ...receiptSettings, storePhone: e.target.value })
+                    }
+                    className="w-full text-sm p-2.5 rounded-xl border-2 border-stone-200 bg-white outline-none focus:border-[#D81B60] font-medium text-stone-800"
+                    placeholder="0812-1252-7520"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-stone-700 mb-1 flex items-center gap-1">
+                    <Instagram size={12} />
+                    Akun Instagram Toko
+                  </label>
+                  <input
+                    type="text"
+                    value={receiptSettings.instagram || ""}
+                    onChange={(e) =>
+                      setReceiptSettings({ ...receiptSettings, instagram: e.target.value })
+                    }
+                    className="w-full text-sm p-2.5 rounded-xl border-2 border-stone-200 bg-white outline-none focus:border-[#D81B60] font-medium text-stone-800"
+                    placeholder="@legiy_dessert"
+                  />
+                </div>
               </div>
-              <div className="text-[9px] text-blue-600 mt-0.5 break-all">
-                {receiptSettings.qrCodeUrl || "https://linktr.ee/legiy_dessert"}
+            </div>
+
+            {/* Section 2: Quotes Inspiratif / Manis di Bawah Nota */}
+            <div className="space-y-3 pt-2 border-t border-stone-100">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black uppercase tracking-wider text-stone-500 flex items-center gap-1.5">
+                  <Quote size={13} className="text-stone-700" />
+                  2. Quotes Manis & Catatan di Bawah Nota
+                </span>
+                <label className="flex items-center gap-1.5 text-xs font-bold text-stone-600 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={receiptSettings.showQuotes !== false}
+                    onChange={(e) =>
+                      setReceiptSettings({ ...receiptSettings, showQuotes: e.target.checked })
+                    }
+                    className="rounded accent-[#D81B60]"
+                  />
+                  <span>Tampilkan Quotes</span>
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-stone-700 mb-1.5">
+                  Pilih Preset Quotes Manis Cepat:
+                </label>
+                <div className="flex flex-wrap gap-1.5 mb-2.5">
+                  {DESSERT_QUOTES_PRESETS.map((quote, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() =>
+                        setReceiptSettings({ ...receiptSettings, quotesBelow: quote })
+                      }
+                      className={`text-[11px] px-2.5 py-1 rounded-lg border font-bold text-left transition-all ${
+                        receiptSettings.quotesBelow === quote
+                          ? "bg-pink-100 text-[#D81B60] border-pink-300 shadow-xs"
+                          : "bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100"
+                      }`}
+                    >
+                      {quote}
+                    </button>
+                  ))}
+                </div>
+
+                <label className="block text-xs font-black text-stone-700 mb-1">
+                  Teks Quotes di Bawah Nota (Kustom):
+                </label>
+                <input
+                  type="text"
+                  value={receiptSettings.quotesBelow || ""}
+                  onChange={(e) =>
+                    setReceiptSettings({ ...receiptSettings, quotesBelow: e.target.value })
+                  }
+                  className="w-full text-sm p-2.5 rounded-xl border-2 border-stone-200 bg-white outline-none focus:border-[#D81B60] font-medium italic text-stone-800"
+                  placeholder="Manisnya pas, bikin harimu lebih ceria ✨"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-black text-stone-700 mb-1">
+                    Ucapan Terima Kasih (Baris 1)
+                  </label>
+                  <input
+                    type="text"
+                    value={receiptSettings.footerText1 || ""}
+                    onChange={(e) =>
+                      setReceiptSettings({ ...receiptSettings, footerText1: e.target.value })
+                    }
+                    className="w-full text-sm p-2.5 rounded-xl border-2 border-stone-200 bg-white outline-none focus:border-[#D81B60] font-medium text-stone-800"
+                    placeholder="Terima kasih atas kunjungannya!"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-stone-700 mb-1">
+                    Catatan Kaki Tambahan (Baris 2)
+                  </label>
+                  <input
+                    type="text"
+                    value={receiptSettings.footerText2 || ""}
+                    onChange={(e) =>
+                      setReceiptSettings({ ...receiptSettings, footerText2: e.target.value })
+                    }
+                    className="w-full text-sm p-2.5 rounded-xl border-2 border-stone-200 bg-white outline-none focus:border-[#D81B60] font-medium text-stone-800"
+                    placeholder="Barang yang sudah dibeli tidak dapat ditukar"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Section 3: Fasilitas Pelanggan & QR Code */}
+            <div className="space-y-3 pt-2 border-t border-stone-100">
+              <span className="text-[11px] font-black uppercase tracking-wider text-stone-500 flex items-center gap-1.5">
+                <Wifi size={13} className="text-stone-700" />
+                3. Fasilitas Wi-Fi & QR Code Pelanggan
+              </span>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-black text-stone-700 mb-1">
+                    Nama Wi-Fi (SSID)
+                  </label>
+                  <input
+                    type="text"
+                    value={receiptSettings.wifiSsid || ""}
+                    onChange={(e) =>
+                      setReceiptSettings({ ...receiptSettings, wifiSsid: e.target.value })
+                    }
+                    className="w-full text-sm p-2.5 rounded-xl border-2 border-stone-200 bg-white outline-none focus:border-[#D81B60] font-medium text-stone-800"
+                    placeholder="Legiy_Free_WiFi"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-stone-700 mb-1">
+                    Password Wi-Fi
+                  </label>
+                  <input
+                    type="text"
+                    value={receiptSettings.wifiPass || ""}
+                    onChange={(e) =>
+                      setReceiptSettings({ ...receiptSettings, wifiPass: e.target.value })
+                    }
+                    className="w-full text-sm p-2.5 rounded-xl border-2 border-stone-200 bg-white outline-none focus:border-[#D81B60] font-mono text-stone-800"
+                    placeholder="manislegiy"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-stone-700 mb-1">
+                  Link QR Code (Linktree / Medsos / Menu Online)
+                </label>
+                <input
+                  type="text"
+                  value={receiptSettings.qrCodeUrl || ""}
+                  onChange={(e) =>
+                    setReceiptSettings({ ...receiptSettings, qrCodeUrl: e.target.value })
+                  }
+                  className="w-full text-sm p-2.5 rounded-xl border-2 border-stone-200 bg-white outline-none focus:border-[#D81B60] font-mono text-xs text-blue-600 font-bold"
+                  placeholder="https://linktr.ee/legiy_dessert"
+                />
+              </div>
+            </div>
+
+            {/* Section 4: Saklar / Toggles */}
+            <div className="pt-2 border-t border-stone-100">
+              <span className="text-[11px] font-black uppercase tracking-wider text-stone-500 block mb-2">
+                4. Opsi Tampilan Nota Cetak
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                <label className="flex items-center gap-2 p-2 rounded-xl border border-stone-200 bg-stone-50/50 cursor-pointer text-xs font-bold text-stone-700">
+                  <input
+                    type="checkbox"
+                    checked={receiptSettings.showLogo !== false}
+                    onChange={(e) =>
+                      setReceiptSettings({ ...receiptSettings, showLogo: e.target.checked })
+                    }
+                    className="rounded accent-[#D81B60]"
+                  />
+                  <span>Logo Toko</span>
+                </label>
+                <label className="flex items-center gap-2 p-2 rounded-xl border border-stone-200 bg-stone-50/50 cursor-pointer text-xs font-bold text-stone-700">
+                  <input
+                    type="checkbox"
+                    checked={receiptSettings.showWifi !== false}
+                    onChange={(e) =>
+                      setReceiptSettings({ ...receiptSettings, showWifi: e.target.checked })
+                    }
+                    className="rounded accent-[#D81B60]"
+                  />
+                  <span>Info Wi-Fi</span>
+                </label>
+                <label className="flex items-center gap-2 p-2 rounded-xl border border-stone-200 bg-stone-50/50 cursor-pointer text-xs font-bold text-stone-700">
+                  <input
+                    type="checkbox"
+                    checked={receiptSettings.showInstagram !== false}
+                    onChange={(e) =>
+                      setReceiptSettings({ ...receiptSettings, showInstagram: e.target.checked })
+                    }
+                    className="rounded accent-[#D81B60]"
+                  />
+                  <span>Instagram</span>
+                </label>
+                <label className="flex items-center gap-2 p-2 rounded-xl border border-stone-200 bg-stone-50/50 cursor-pointer text-xs font-bold text-stone-700">
+                  <input
+                    type="checkbox"
+                    checked={receiptSettings.showQuotes !== false}
+                    onChange={(e) =>
+                      setReceiptSettings({ ...receiptSettings, showQuotes: e.target.checked })
+                    }
+                    className="rounded accent-[#D81B60]"
+                  />
+                  <span>Quotes Bawah</span>
+                </label>
+                <label className="flex items-center gap-2 p-2 rounded-xl border border-stone-200 bg-stone-50/50 cursor-pointer text-xs font-bold text-stone-700">
+                  <input
+                    type="checkbox"
+                    checked={receiptSettings.showQrCode !== false}
+                    onChange={(e) =>
+                      setReceiptSettings({ ...receiptSettings, showQrCode: e.target.checked })
+                    }
+                    className="rounded accent-[#D81B60]"
+                  />
+                  <span>QR Code</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="mt-1 bg-pink-50/70 border border-pink-200 text-stone-800 p-3 rounded-xl text-xs flex items-center gap-2.5 font-bold">
+              <CheckCircle size={16} className="text-[#D81B60] flex-shrink-0" />
+              <span>Format struk otomatis disimpan dan disinkronkan ke Firebase Firestore (mode hemat kuota).</span>
+            </div>
+          </div>
+
+          {/* Live Preview Card (80mm style) */}
+          <div className="lg:col-span-5 flex flex-col items-center">
+            <div className="text-xs font-black text-stone-700 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-stone-900"></span>
+              <span>Pratinjau Nota Thermal 80mm</span>
+            </div>
+            <div className="bg-white border-4 border-stone-900 shadow-xl rounded-2xl p-5 w-full max-w-[340px] text-black font-mono text-[12px] leading-snug select-none">
+              {/* Header */}
+              <div className="text-center pb-1">
+                {receiptSettings.showLogo !== false && (
+                  <img
+                    src={STORE_LOGO_PRINT}
+                    alt="Logo"
+                    className="w-28 h-auto mx-auto mb-1.5 object-contain filter contrast-200"
+                  />
+                )}
+                <div className="font-black text-[16px] uppercase tracking-tight text-black">
+                  {receiptSettings.storeName || "Legiy's Dessert"}
+                </div>
+                {receiptSettings.storeTagline && (
+                  <div className="text-[10px] font-bold italic text-black mt-0.5">
+                    {receiptSettings.storeTagline}
+                  </div>
+                )}
+                <div className="text-[11px] font-bold text-black mt-0.5">
+                  {receiptSettings.storeAddress || "Perumahan TSI, Blok O.14, Cirebon"}
+                </div>
+                <div className="text-[11px] font-black text-black mt-0.5">
+                  {receiptSettings.storePhone || "0812-1252-7520"}
+                  {receiptSettings.showInstagram !== false && receiptSettings.instagram ? ` | ${receiptSettings.instagram}` : ""}
+                </div>
+              </div>
+
+              <div className="border-b-2 border-dashed border-black my-2"></div>
+
+              {/* Info */}
+              <div className="text-[11px] space-y-0.5 text-black font-bold">
+                <div className="flex justify-between">
+                  <span>No. Struk</span>
+                  <span className="font-black">LGY-892104</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Tanggal</span>
+                  <span className="font-black">
+                    {new Date().toLocaleDateString("id-ID")} {new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Customer</span>
+                  <span className="font-black">Kak Amanda</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Tipe Pesanan</span>
+                  <span className="font-black uppercase">Dine-in</span>
+                </div>
+              </div>
+
+              <div className="border-b-2 border-dashed border-black my-2"></div>
+
+              {/* Sample items */}
+              <div className="space-y-2 text-[12px] text-black">
+                <div>
+                  <div className="font-black uppercase">Pistachio Crepe Cake</div>
+                  <div className="flex justify-between font-bold text-[11px] pl-2">
+                    <span>1 x 38.000</span>
+                    <span className="font-black text-[12px]">38.000</span>
+                  </div>
+                </div>
+                <div>
+                  <div className="font-black uppercase">Iced Caramel Macchiato</div>
+                  <div className="flex justify-between font-bold text-[11px] pl-2">
+                    <span>2 x 25.000</span>
+                    <span className="font-black text-[12px]">50.000</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-b-2 border-dashed border-black my-2"></div>
+
+              {/* Totals */}
+              <div className="space-y-1 text-[12px] text-black font-bold">
+                <div className="flex justify-between">
+                  <span>Subtotal</span>
+                  <span className="font-black">88.000</span>
+                </div>
+                <div className="border-y-2 border-black py-1.5 my-1 flex justify-between font-black text-[16px]">
+                  <span>TOTAL</span>
+                  <span>Rp 88.000</span>
+                </div>
+                <div className="flex justify-between pt-0.5 text-[11px]">
+                  <span>Bayar (QRIS)</span>
+                  <span className="font-black">88.000</span>
+                </div>
+              </div>
+
+              {/* Wi-Fi Box in Preview */}
+              {receiptSettings.showWifi !== false && (receiptSettings.wifiSsid || receiptSettings.wifiPass) && (
+                <div className="border border-dashed border-black rounded-lg py-1 px-2 my-2 text-center text-[10px] font-bold">
+                  <span>📶 Wi-Fi: <span className="font-black">{receiptSettings.wifiSsid || "Legiy_Free_WiFi"}</span></span>
+                  {receiptSettings.wifiPass && (
+                    <span className="ml-2">Pass: <span className="font-black">{receiptSettings.wifiPass}</span></span>
+                  )}
+                </div>
+              )}
+
+              {/* Quotes di Bawah Struk */}
+              {receiptSettings.showQuotes !== false && receiptSettings.quotesBelow && (
+                <div className="my-2 py-1.5 px-2 border-y border-dashed border-black text-center text-[11px] font-bold italic text-black">
+                  "{receiptSettings.quotesBelow}"
+                </div>
+              )}
+
+              <div className="border-b-2 border-dashed border-black my-2"></div>
+
+              {/* Footer & QR Code */}
+              <div className="text-center pt-0.5 flex flex-col items-center text-black">
+                {receiptSettings.footerText1 && (
+                  <div className="text-[11px] font-bold mb-0.5">
+                    {receiptSettings.footerText1}
+                  </div>
+                )}
+                {receiptSettings.footerText2 && (
+                  <div className="text-[10.5px] font-black uppercase mb-1.5">
+                    {receiptSettings.footerText2}
+                  </div>
+                )}
+
+                {/* QR Code */}
+                {receiptSettings.showQrCode !== false && (
+                  <>
+                    <div className="bg-white p-2 rounded-lg border-2 border-black inline-block mt-1">
+                      <QRCodeCanvas
+                        value={receiptSettings.qrCodeUrl || "https://linktr.ee/legiy_dessert"}
+                        size={84}
+                        level="M"
+                        fgColor="#000000"
+                        bgColor="#ffffff"
+                      />
+                    </div>
+                    <div className="text-[10px] font-black text-black mt-1.5 uppercase tracking-wide">
+                      Scan untuk Menu & Sosmed
+                    </div>
+                    <div className="text-[9px] font-bold text-black mt-0.5 break-all">
+                      {receiptSettings.qrCodeUrl || "linktr.ee/legiy_dessert"}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -1563,7 +1943,7 @@ type ManagementTab =
 
 interface SyncOperation {
   id: string;
-  type: "PRODUCT" | "ORDER" | "EXPENSE" | "PRE_ORDER" | "CATEGORY";
+  type: "PRODUCT" | "ORDER" | "EXPENSE" | "PRE_ORDER" | "CATEGORY" | "SETTINGS";
   action: "UPSERT" | "DELETE";
   data: any;
 }
@@ -1580,6 +1960,7 @@ export default function App() {
   const [activeCategory, setActiveCategory] = useState<string>("Semua");
   const [searchQuery, setSearchQuery] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [customizingProduct, setCustomizingProduct] = useState<Product | null>(null);
   const [discount, setDiscount] = useState<number>(0);
   const [orderType, setOrderType] = useState<OrderType>("Dine-in");
   const [customerName, setCustomerName] = useState("");
@@ -1588,14 +1969,7 @@ export default function App() {
 
   const [syncQueue, setSyncQueue] = useLocalStorage<SyncOperation[]>("legiy_sync_queue", []);
   
-  const [receiptSettings, setReceiptSettings] = useLocalStorage("legiy_receipt_settings", {
-    storeName: "Legiy's Dessert",
-    storeAddress: "Perumahan TSI, Blok O.14, Cirebon",
-    storePhone: "0812-1252-7520",
-    qrCodeUrl: "https://linktr.ee/legiy_dessert",
-    footerText1: "Terima kasih atas kunjungannya!",
-    footerText2: "Manisnya pas, bikin harimu lebih ceria :)"
-  });
+  const [receiptSettings, setReceiptSettings] = useLocalStorage("legiy_receipt_settings", DEFAULT_RECEIPT_SETTINGS);
 
   const [receiptToPrint, setReceiptToPrint] = useState<any>(null);
   const [isEditingReceipt, setIsEditingReceipt] = useState(false);
@@ -1624,165 +1998,191 @@ export default function App() {
     }
   }, [receiptToPrint]);
 
-  const syncQueueRef = React.useRef(syncQueue);
-  useEffect(() => {
-    syncQueueRef.current = syncQueue;
-  }, [syncQueue]);
+  const [isFirebaseConnected, setIsFirebaseConnected] = useState(true);
+  const [isMigrating, setIsMigrating] = useState(false);
+  const [isImportingSheets, setIsImportingSheets] = useState(false);
 
-  const queueSync = (
-    type: "PRODUCT" | "ORDER" | "EXPENSE" | "PRE_ORDER" | "CATEGORY",
+  // Real-time Firebase Firestore synchronization
+  useEffect(() => {
+    let isMounted = true;
+
+    const unsubProducts = subscribeToProducts((items) => {
+      if (!isMounted) return;
+      setIsFirebaseConnected(true);
+      if (items && items.length > 0) {
+        setProductList(items);
+      } else {
+        // Auto-seed initial catalog to Firestore if empty
+        seedInitialFirestoreData(products, initialCategories).then(() => {
+          if (isMounted) setIsFirebaseConnected(true);
+        });
+      }
+    });
+
+    const unsubCategories = subscribeToCategories((items) => {
+      if (!isMounted) return;
+      if (items && items.length > 0) {
+        const merged = Array.from(new Set([...initialCategories, ...items]));
+        setCategories(merged);
+      }
+    });
+
+    const unsubOrders = subscribeToOrders((items) => {
+      if (!isMounted) return;
+      if (items) {
+        setOrderHistory(items);
+      }
+    });
+
+    const unsubExpenses = subscribeToExpenses((items) => {
+      if (!isMounted) return;
+      if (items) {
+        setExpenses(items);
+      }
+    });
+
+    const unsubPreOrders = subscribeToPreOrders((items) => {
+      if (!isMounted) return;
+      if (items) {
+        setPreOrders(items);
+      }
+    });
+
+    const unsubSettings = subscribeToReceiptSettings((cloudSettings) => {
+      if (!isMounted) return;
+      if (cloudSettings && Object.keys(cloudSettings).length > 0) {
+        setReceiptSettings((prev: any) => ({ ...prev, ...cloudSettings }));
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubProducts();
+      unsubCategories();
+      unsubOrders();
+      unsubExpenses();
+      unsubPreOrders();
+      unsubSettings();
+    };
+  }, []);
+
+  // Debounced auto-sync receipt settings to Firebase Firestore (prevents excessive writes while typing)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      syncReceiptSettingsToFirestore(receiptSettings).catch((err) => {
+        console.warn("Auto-sync receipt settings to Firestore:", err);
+      });
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [receiptSettings]);
+
+  const queueSync = async (
+    type: "PRODUCT" | "ORDER" | "EXPENSE" | "PRE_ORDER" | "CATEGORY" | "SETTINGS",
     action: "UPSERT" | "DELETE",
     data: any
   ) => {
-    const opId = Math.random().toString(36).substring(2, 9);
-    const newOp: SyncOperation = { id: opId, type, action, data };
-    setSyncQueue((prev) => [...prev, newOp]);
+    setSyncStatus(`Syncing to Firebase...`);
+    try {
+      if (type === "PRODUCT") {
+        await syncProductToFirestore(action, data);
+      } else if (type === "CATEGORY") {
+        await syncCategoryToFirestore(action, data);
+      } else if (type === "ORDER") {
+        await syncOrderToFirestore(action, data);
+      } else if (type === "EXPENSE") {
+        await syncExpenseToFirestore(action, data);
+      } else if (type === "PRE_ORDER") {
+        await syncPreOrderToFirestore(action, data);
+      } else if (type === "SETTINGS") {
+        await syncReceiptSettingsToFirestore(data);
+      }
+      setIsFirebaseConnected(true);
+      setSyncStatus(null);
+    } catch (err) {
+      console.error("Firebase sync error:", err);
+      setSyncStatus("Offline saved");
+      setTimeout(() => setSyncStatus(null), 3000);
+    }
   };
 
-  const applyPendingSync = <T extends { id?: any; orderId?: any }>(
-    type: "PRODUCT" | "ORDER" | "EXPENSE" | "PRE_ORDER" | "CATEGORY",
-    fetchedList: T[]
-  ): T[] => {
-    const pendingOps = syncQueueRef.current.filter((op) => op.type === type);
-    let merged = [...fetchedList];
-    
-    pendingOps.forEach((op) => {
-      const primaryKey = op.data.id || op.data.orderId;
-      if (op.action === "DELETE") {
-        merged = merged.filter((item) => {
-          const itemId = item.id || item.orderId;
-          return String(itemId) !== String(primaryKey);
-        });
-      } else if (op.action === "UPSERT") {
-        const index = merged.findIndex((item) => {
-          const itemId = item.id || item.orderId;
-          return String(itemId) !== "" && String(itemId) === String(primaryKey);
-        });
-        if (index > -1) {
-          merged[index] = { ...merged[index], ...op.data };
-        } else {
-          merged.unshift(op.data);
-        }
+  const handleMigrateAllToFirebase = async () => {
+    setIsMigrating(true);
+    setSyncStatus("Migrating data to Firebase...");
+    try {
+      for (const p of productList) {
+        await syncProductToFirestore("UPSERT", p);
       }
+      for (const c of categories) {
+        await syncCategoryToFirestore("UPSERT", { name: c });
+      }
+      for (const o of orderHistory) {
+        await syncOrderToFirestore("UPSERT", o);
+      }
+      for (const e of expenses) {
+        await syncExpenseToFirestore("UPSERT", e);
+      }
+      for (const po of preOrders) {
+        await syncPreOrderToFirestore("UPSERT", po);
+      }
+      await syncReceiptSettingsToFirestore(receiptSettings);
+
+      setIsFirebaseConnected(true);
+      alert("Sukses! Semua data produk, kategori, riwayat transaksi, pengeluaran, dan pre-order berhasil disinkronkan ke Firebase Firestore.");
+    } catch (err) {
+      console.error("Migration error:", err);
+      alert("Gagal memigrasikan sebagian data ke Firebase. Silakan periksa koneksi internet.");
+    } finally {
+      setIsMigrating(false);
+      setSyncStatus(null);
+    }
+  };
+
+  const handleImportFromSheets = async () => {
+    setIsImportingSheets(true);
+    setSyncStatus("Menarik data Excel / Google Sheets...");
+    try {
+      const res = await importFromGoogleSheetsToFirestore();
+      if (res.success) {
+        alert(
+          `Sukses Migrasi dari Excel & Google Sheets!\n` +
+          `• ${res.ordersCount} Riwayat Transaksi\n` +
+          `• ${res.productsCount} Produk Menu\n` +
+          `• ${res.categoriesCount} Kategori Menu\n\n` +
+          `Semua data telah tersimpan aman di Firebase Firestore.`
+        );
+      } else {
+        alert(`Gagal menarik data: ${res.message || "Terjadi kesalahan koneksi"}`);
+      }
+    } catch (err: any) {
+      alert(`Gagal menarik data: ${err.message || String(err)}`);
+    } finally {
+      setIsImportingSheets(false);
+      setSyncStatus(null);
+    }
+  };
+
+  const handleTestPrintReceipt = () => {
+    const testItems = [
+      { name: "Pistachio Crepe Cake", price: 38000, quantity: 1 },
+      { name: "Iced Caramel Macchiato", price: 25000, quantity: 2 },
+    ];
+    setReceiptToPrint({
+      orderId: "TEST-" + Math.floor(100000 + Math.random() * 900000),
+      timestamp: new Date().toISOString(),
+      customerName: "Kak Amanda (Uji Coba)",
+      orderType: "Dine-in",
+      cartSnapshot: testItems,
+      items: testItems,
+      subtotal: 88000,
+      tax: 0,
+      discount: 0,
+      total: 88000,
+      paymentMethod: "QRIS",
+      cashGiven: 88000,
+      paidAmount: 88000,
+      change: 0,
     });
-    
-    return merged;
   };
-
-  const applyPendingCategories = (fetchedCats: string[]): string[] => {
-    const pendingOps = syncQueueRef.current.filter((op) => op.type === "CATEGORY");
-    let merged = [...fetchedCats];
-    
-    pendingOps.forEach((op) => {
-      const catName = op.data.name;
-      if (op.action === "DELETE") {
-        merged = merged.filter((c) => c !== catName);
-      } else if (op.action === "UPSERT") {
-        if (!merged.includes(catName)) {
-          merged.push(catName);
-        }
-      }
-    });
-    
-    return merged;
-  };
-
-  // Sequential queue sync backend worker
-  useEffect(() => {
-    if (syncQueue.length === 0) return;
-    
-    let isStopped = false;
-    
-    const processQueue = async () => {
-      const op = syncQueue[0];
-      const targetType = op.action === "DELETE" ? `DELETE_${op.type}` : op.type;
-      
-      setSyncStatus(`Syncing ${op.type.replace('_', ' ')}...`);
-      try {
-        const res = await syncToGoogleSheets(targetType, op.data);
-        if (res && res.success && !isStopped) {
-          setSyncQueue((prev) => prev.filter((item) => item.id !== op.id));
-        }
-      } catch (error) {
-        console.error("Queue sync error, will retry in next cycle:", error);
-      } finally {
-        if (!isStopped) setSyncStatus(null);
-      }
-    };
-    
-    const timeout = setTimeout(processQueue, 1500);
-    return () => {
-      isStopped = true;
-      clearTimeout(timeout);
-    };
-  }, [syncQueue]);
-
-  // Periodic download/merge from Google Sheets
-  useEffect(() => {
-    let isMounted = true;
-    
-    const syncData = async () => {
-      setSyncStatus("Fetching updates...");
-      try {
-        const result = await fetchFromGoogleSheets();
-        if (result && result.status === 'success' && result.data && isMounted) {
-          const { PRODUCT, ORDER, EXPENSE, PRE_ORDER, CATEGORY } = result.data;
-          
-          // 1. PRODUCTS
-          const baseProducts = PRODUCT && PRODUCT.length > 0 
-            ? (Array.from(new Map(PRODUCT.map((item: any) => [item.id, item])).values()) as Product[])
-            : [];
-          const mergedProducts = applyPendingSync("PRODUCT", baseProducts);
-          setProductList(mergedProducts);
-          
-          // 2. CATEGORIES (Use CATEGORY sheet with fallback to initial + products)
-          const baseCats = CATEGORY && CATEGORY.length > 0
-            ? (CATEGORY.map((c: any) => c.name).filter(Boolean) as string[])
-            : [];
-          const fallbackCats = Array.from(new Set([
-            ...initialCategories,
-            ...mergedProducts.map((p) => p.category)
-          ])).filter(Boolean) as string[];
-          const fetchedCats = baseCats.length > 0 ? baseCats : fallbackCats;
-          const mergedCats = applyPendingCategories(fetchedCats);
-          setCategories(mergedCats);
-          
-          // 3. ORDERS
-          const baseOrders = ORDER && ORDER.length > 0
-            ? (Array.from(new Map(ORDER.map((item: any) => [item.orderId, item])).values()) as any[])
-            : [];
-          const mergedOrders = applyPendingSync("ORDER", baseOrders);
-          setOrderHistory(mergedOrders);
-          
-          // 4. EXPENSES
-          const baseExpenses = EXPENSE && EXPENSE.length > 0
-            ? (Array.from(new Map(EXPENSE.map((item: any) => [item.id, item])).values()) as any[])
-            : [];
-          const mergedExpenses = applyPendingSync("EXPENSE", baseExpenses);
-          setExpenses(mergedExpenses);
-          
-          // 5. PRE-ORDERS
-          const basePreOrders = PRE_ORDER && PRE_ORDER.length > 0
-            ? (Array.from(new Map(PRE_ORDER.map((item: any) => [item.id, item])).values()) as any[])
-            : [];
-          const mergedPreOrders = applyPendingSync("PRE_ORDER", basePreOrders);
-          setPreOrders(mergedPreOrders);
-        }
-      } catch (error) {
-        console.error("Fetch/merge from Google Sheets failed", error);
-      } finally {
-        if (isMounted) setSyncStatus(null);
-      }
-    };
-
-    syncData();
-    
-    const interval = setInterval(syncData, 30000);
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, []);
 
   // Checkout & Payment State
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
@@ -1811,31 +2211,54 @@ export default function App() {
   }, [productList, activeCategory, searchQuery]);
 
   // Cart operations
-  const addToCart = (product: Product) => {
+  const handleAddToCartWithAddons = (
+    product: Product,
+    quantity: number,
+    selectedAddons: SelectedAddon[],
+    notes: string
+  ) => {
+    const extraPerUnit = selectedAddons.reduce((acc, curr) => acc + (curr.price || 0), 0);
+    const finalUnitPrice = product.price + extraPerUnit;
+
     setCart((prev) => {
-      const existing = prev.find((item) => item.id === product.id);
-      if (existing) {
-        return prev.map((item) =>
-          item.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item,
+      // Check if identical item (same id, same addons, same notes) already exists
+      const existingIdx = prev.findIndex(
+        (item) =>
+          item.id === product.id &&
+          (item.itemNotes || "") === (notes || "") &&
+          JSON.stringify(item.selectedAddons || []) === JSON.stringify(selectedAddons || [])
+      );
+
+      if (existingIdx > -1) {
+        return prev.map((item, idx) =>
+          idx === existingIdx
+            ? { ...item, quantity: item.quantity + quantity }
+            : item
         );
       }
-      return [
-        ...prev,
-        {
-          ...product,
-          cartId: Math.random().toString(36).substr(2, 9),
-          quantity: 1,
-        },
-      ];
+
+      const newItem: CartItem = {
+        ...product,
+        cartId: `${product.id}-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        basePrice: product.price,
+        price: finalUnitPrice,
+        quantity,
+        selectedAddons,
+        itemNotes: notes,
+      };
+      return [...prev, newItem];
     });
   };
 
-  const updateQuantity = (id: string, delta: number) => {
+  const addToCart = (product: Product) => {
+    setCustomizingProduct(product);
+  };
+
+  const updateQuantity = (cartKey: string, delta: number) => {
     setCart((prev) =>
       prev.map((item) => {
-        if (item.id === id) {
+        const key = item.cartId || item.id;
+        if (key === cartKey) {
           const newQ = item.quantity + delta;
           return newQ > 0 ? { ...item, quantity: newQ } : item;
         }
@@ -1844,8 +2267,8 @@ export default function App() {
     );
   };
 
-  const removeFromCart = (id: string) => {
-    setCart((prev) => prev.filter((item) => item.id !== id));
+  const removeFromCart = (cartKey: string) => {
+    setCart((prev) => prev.filter((item) => (item.cartId || item.id) !== cartKey));
   };
 
   const clearCart = () => {
@@ -1881,7 +2304,13 @@ export default function App() {
     const timestamp = new Date().toISOString();
 
     const itemsDescription = cart
-      .map((item) => `${item.name} (${item.quantity}x)`)
+      .map((item) => {
+        const addonsText = item.selectedAddons && item.selectedAddons.length > 0
+          ? ` [${item.selectedAddons.map((a: any) => a.optionName || a.name).join(", ")}]`
+          : "";
+        const noteText = item.itemNotes ? ` (Catatan: ${item.itemNotes})` : "";
+        return `${item.name}${addonsText}${noteText} (${item.quantity}x)`;
+      })
       .join(", ");
 
     const orderData = {
@@ -1897,9 +2326,10 @@ export default function App() {
       total,
       cashGiven: paymentMethod === "Cash" ? cashGiven : total,
       change: paymentMethod === "Cash" ? change : 0,
+      cartSnapshot: [...cart],
     };
 
-    // Sync to Google Sheets
+    // Sync to Firestore & Sheets
     queueSync("ORDER", "UPSERT", orderData);
 
     const fullOrderDetails = { ...orderData, cartSnapshot: [...cart] };
@@ -1928,42 +2358,44 @@ export default function App() {
     <div id="root-container" className="flex flex-col h-screen w-screen bg-[#FDFBF7] font-sans text-stone-800 overflow-hidden relative">
       <div className="flex flex-col h-full w-full print:hidden">
       {/* Top Header Bar */}
-      <header className="h-16 sm:h-20 flex items-center justify-between px-3 sm:px-8 bg-white border-b-2 border-stone-200 shadow-xs shrink-0 print:hidden z-10">
-        <div className="flex items-center gap-2 sm:gap-10">
-          <div className="flex items-center gap-2 sm:gap-4">
-            <div className="h-12 sm:h-16 w-24 sm:w-36 bg-white border-2 border-pink-100 rounded-xl flex items-center justify-center p-1.5 shadow-xs overflow-hidden shrink-0">
+      <header className="h-16 sm:h-20 flex items-center justify-between px-3 sm:px-6 lg:px-8 bg-white border-b border-stone-200/80 shadow-xs shrink-0 print:hidden z-10">
+        <div className="flex items-center gap-3 sm:gap-6 lg:gap-8">
+          <div className="flex items-center gap-2.5 sm:gap-3.5">
+            <div className="h-10 sm:h-12 w-20 sm:w-28 bg-white border border-stone-200 rounded-xl flex items-center justify-center p-1 shadow-xs overflow-hidden shrink-0">
               <img
                 src={STORE_LOGO}
-                alt="Legiy's Dessert Logo"
+                alt="Legiy Dessert Logo"
                 className="w-full h-full object-contain"
               />
             </div>
             <div>
-              <h1 className="text-base sm:text-2xl font-black tracking-tight text-stone-900 flex items-center gap-1.5 leading-tight">
-                Legiy <span className="text-[#D81B60]">Dessert</span>
+              <h1 className="text-sm sm:text-xl font-black tracking-tight text-stone-900 flex items-center gap-1 leading-tight">
+                Legiy <span className="text-[#D45D79]">Dessert</span>
               </h1>
-              <p className="hidden sm:block text-[11px] sm:text-xs text-stone-600 font-bold tracking-wider uppercase">
+              <p className="hidden sm:block text-[10px] sm:text-[11px] text-stone-500 font-semibold tracking-wider uppercase">
                 Premium Home Cafe
               </p>
             </div>
           </div>
-          <div className="flex items-center bg-stone-100 p-1 rounded-full border border-stone-200 scale-90 sm:scale-100 origin-left">
+
+          {/* Module Switcher Tabs */}
+          <div className="flex items-center bg-stone-100/90 p-1 rounded-full border border-stone-200 shadow-xs">
             <button
               onClick={() => setViewMode("POS")}
-              className={`px-3.5 sm:px-5 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-black transition-all ${
+              className={`px-3.5 sm:px-5 py-1.5 rounded-full text-xs sm:text-sm font-bold transition-all ${
                 viewMode === "POS" 
-                  ? "bg-[#D81B60] text-white shadow-md" 
-                  : "text-stone-700 hover:text-stone-900 hover:bg-stone-200/50"
+                  ? "bg-[#D45D79] text-white shadow-xs" 
+                  : "text-stone-600 hover:text-stone-900 hover:bg-stone-200/60"
               }`}
             >
               Kasir
             </button>
             <button
               onClick={() => setViewMode("MANAGEMENT")}
-              className={`px-3.5 sm:px-5 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-black transition-all ${
+              className={`px-3.5 sm:px-5 py-1.5 rounded-full text-xs sm:text-sm font-bold transition-all ${
                 viewMode === "MANAGEMENT" 
-                  ? "bg-[#D81B60] text-white shadow-md" 
-                  : "text-stone-700 hover:text-stone-900 hover:bg-stone-200/50"
+                  ? "bg-[#D45D79] text-white shadow-xs" 
+                  : "text-stone-600 hover:text-stone-900 hover:bg-stone-200/60"
               }`}
             >
               Management
@@ -1971,174 +2403,214 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-6">
-          {syncStatus && (
-            <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-stone-700 font-bold bg-stone-100 border border-stone-200 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full shadow-xs">
-              <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
-              <span className="hidden xs:inline">{syncStatus}</span>
-            </div>
+        <div className="flex items-center gap-2 sm:gap-4">
+          {/* Mobile/Tablet Cart Toggle Button in Header */}
+          {viewMode === "POS" && (
+            <button
+              onClick={() => setIsMobileCartOpen(true)}
+              className="lg:hidden flex items-center gap-2 bg-stone-100 hover:bg-stone-200/80 text-stone-800 px-3 py-1.5 rounded-xl border border-stone-200 text-xs font-bold transition-colors active:scale-95"
+            >
+              <ShoppingBag size={16} className="text-[#D45D79]" />
+              <span className="hidden xs:inline">Keranjang</span>
+              {cart.length > 0 && (
+                <span className="w-5 h-5 rounded-full bg-[#D45D79] text-white text-[10px] font-black flex items-center justify-center shadow-xs">
+                  {cart.reduce((a, c) => a + c.quantity, 0)}
+                </span>
+              )}
+            </button>
           )}
+
+          <div className="flex items-center gap-2 text-[11px] sm:text-xs text-stone-700 font-semibold bg-stone-50 border border-stone-200/80 px-2.5 sm:px-3 py-1.5 rounded-full shadow-xs">
+            <span className={`w-2 h-2 rounded-full ${isFirebaseConnected ? "bg-emerald-500" : "bg-amber-500 animate-pulse"}`}></span>
+            <span className="hidden sm:inline">
+              {syncStatus || (isFirebaseConnected ? "Cloud Sync Aktif" : "Menghubungkan...")}
+            </span>
+          </div>
+
           <div className="text-right hidden md:block">
-            <p className="text-sm font-black text-stone-900">Legiy System</p>
-            <p className="text-[10px] text-stone-500 uppercase font-black tracking-wider">
-              {viewMode === "POS" ? "POS Module" : "Admin Module"}
+            <p className="text-xs font-bold text-stone-900">Legiy POS</p>
+            <p className="text-[10px] text-stone-500 font-medium tracking-wide">
+              {viewMode === "POS" ? "Mode Kasir" : "Mode Admin"}
             </p>
           </div>
         </div>
       </header>
 
       {viewMode === "POS" ? (
-        <main className="flex-1 flex overflow-hidden p-4 gap-4 max-w-7xl mx-auto w-full">
-          {/* Category Navigation (Left) */}
-          <nav className="w-24 flex flex-col gap-2.5 overflow-y-auto shrink-0 print:hidden hidden sm:flex pb-4 custom-scrollbar">
-            {(
-              ["Semua", ...categories]
-            ).map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setActiveCategory(cat)}
-                className={`flex flex-col items-center justify-center p-2.5 h-16 rounded-2xl transition-all duration-200 font-black
-                ${
-                  activeCategory === cat
-                    ? "bg-[#D81B60] text-white shadow-md border-2 border-[#D81B60]"
-                    : "bg-white text-stone-800 shadow-xs border-2 border-stone-200 hover:bg-pink-50/50 hover:border-pink-300 hover:text-[#D81B60]"
-                }`}
-              >
-                <span className="text-xs font-black leading-tight text-center">
-                  {cat.replace("Signature Dessert", "Dessert")}
-                </span>
-              </button>
-            ))}
-          </nav>
-
-          {/* Product Grid (Center) */}
-          <section className="flex-1 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 content-start overflow-y-auto pb-8 print:hidden pr-1 custom-scrollbar">
-            {/* Search Bar */}
-            <div className="col-span-full">
+        <main className="flex-1 flex overflow-hidden p-2.5 sm:p-4 lg:p-5 gap-3.5 sm:gap-4 max-w-7xl mx-auto w-full">
+          {/* Catalog & Products Section */}
+          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            {/* Top Toolbar: Search & Category Navigation */}
+            <div className="mb-3 space-y-2.5 shrink-0">
+              {/* Search Bar */}
               <div className="relative">
                 <input
                   type="text"
-                  placeholder="Cari nama menu atau kategori..."
+                  placeholder="Cari nama menu atau kategori dessert..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-white text-stone-900 text-sm font-bold pl-11 pr-10 py-3.5 rounded-2xl shadow-xs border-2 border-stone-200 outline-none focus:border-[#D81B60] focus:ring-2 focus:ring-[#D81B60]/20 transition-all placeholder-stone-400"
+                  className="w-full bg-white text-stone-900 text-xs sm:text-sm font-medium pl-10 pr-10 py-2.5 sm:py-3 rounded-2xl shadow-xs border border-stone-200/80 outline-none focus:border-[#D45D79] focus:ring-2 focus:ring-rose-100 transition-all placeholder:text-stone-400"
                 />
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-500">
-                  <Search size={18} strokeWidth={2.5} />
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400">
+                  <Search size={16} strokeWidth={2.5} />
                 </span>
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery("")}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 font-black text-xs text-stone-600 hover:text-stone-900 px-2 py-1 rounded-md bg-stone-100 hover:bg-stone-200 transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-[11px] text-stone-500 hover:text-stone-900 px-2 py-0.5 rounded-md bg-stone-100 hover:bg-stone-200 transition-colors"
                   >
-                    Clear
+                    Reset
                   </button>
                 )}
               </div>
-            </div>
 
-            {/* Mobile Categories Dropdown */}
-            <div className="col-span-full sm:hidden mb-2">
-              <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-                {(
-                  ["Semua", ...categories]
-                ).map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => setActiveCategory(cat)}
-                    className={`px-4 py-2 rounded-xl whitespace-nowrap text-sm font-black transition-all duration-200
-                      ${
-                        activeCategory === cat
-                          ? "bg-[#D81B60] text-white shadow-md border-2 border-[#D81B60]"
-                          : "bg-white text-stone-800 border-2 border-stone-200 hover:border-pink-200"
+              {/* Category Pills (Horizontal Scrolling - Clean on Mobile, iPad, and Desktop) */}
+              <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 no-scrollbar pt-0.5">
+                {["Semua", ...categories].map((cat) => {
+                  const isActive = activeCategory === cat;
+                  const count = cat === "Semua"
+                    ? productList.length
+                    : productList.filter((p) => p.category === cat).length;
+
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => setActiveCategory(cat)}
+                      className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl whitespace-nowrap text-xs font-bold transition-all duration-150 flex items-center gap-1.5 shrink-0 border select-none ${
+                        isActive
+                          ? "bg-[#D45D79] text-white border-[#D45D79] shadow-xs"
+                          : "bg-white text-stone-600 border-stone-200/80 hover:bg-stone-50 hover:text-stone-900 hover:border-stone-300"
                       }`}
-                  >
-                    {cat}
-                  </button>
-                ))}
+                    >
+                      <span>{cat}</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                          isActive ? "bg-white/25 text-white" : "bg-stone-100 text-stone-500"
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {filteredProducts.length === 0 ? (
-              <div className="col-span-full py-16 flex flex-col items-center justify-center text-center">
-                <Search size={44} className="text-stone-400 mb-3" />
-                <p className="text-base font-black text-stone-700">Menu tidak ditemukan</p>
-                <p className="text-xs text-stone-500 font-semibold mt-1">Coba cari dengan kata kunci lain atau pilih kategori Semua.</p>
-              </div>
-            ) : (
-              filteredProducts.map((product, idx) => (
-                <div
-                  key={`${product.id}-${idx}`}
-                  onClick={() => addToCart(product)}
-                  className={`bg-white rounded-2xl p-4 shadow-xs border-2 flex flex-col cursor-pointer transition-all active:scale-[0.98] group select-none hover:shadow-md h-full min-h-[128px]
-                  ${cart.find((c) => c.id === product.id) ? "border-[#D81B60] ring-2 ring-[#D81B60] ring-offset-2" : "border-stone-200 hover:border-[#D81B60]"}`}
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-stone-400 group-hover:text-pink-600 transition-colors">
-                      {product.category}
-                    </span>
+            {/* Product Grid (Responsive: 2 cols phone, 3 cols tablet/iPad, 3-4 cols desktop) */}
+            <div className="flex-1 overflow-y-auto pr-1 pb-20 lg:pb-4 custom-scrollbar">
+              {filteredProducts.length === 0 ? (
+                <div className="py-16 flex flex-col items-center justify-center text-center">
+                  <div className="w-12 h-12 rounded-2xl bg-stone-100 text-stone-400 flex items-center justify-center mb-3">
+                    <Search size={22} strokeWidth={2} />
                   </div>
-                  <h3 className="text-[15px] font-black text-stone-900 leading-snug line-clamp-2 min-h-[2.6rem] mb-3">
-                    {product.name}
-                  </h3>
-                  <div className="mt-auto flex justify-between items-center pt-2 border-t border-stone-100">
-                    <span className="text-base font-black text-[#D81B60] tracking-tight">
-                      {formatRupiah(product.price)}
-                    </span>
-
-                    {cart.find((c) => c.id === product.id) ? (
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center font-black text-white bg-[#D81B60] shadow-sm">
-                        <span className="text-xs">
-                          {cart.find((c) => c.id === product.id)?.quantity}x
-                        </span>
-                      </div>
-                    ) : (
-                      <button className="w-8 h-8 bg-stone-100 group-hover:bg-[#D81B60] group-hover:text-white transition-colors rounded-lg flex items-center justify-center font-black text-stone-800 border border-stone-200">
-                        <Plus size={16} strokeWidth={3} />
-                      </button>
-                    )}
-                  </div>
+                  <p className="text-sm font-bold text-stone-800">Menu tidak ditemukan</p>
+                  <p className="text-xs text-stone-500 mt-1">Coba cari dengan kata kunci lain atau pilih kategori Semua.</p>
                 </div>
-              ))
-            )}
-          </section>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3.5 content-start">
+                  {filteredProducts.map((product, idx) => {
+                    const cartItem = cart.find((c) => c.id === product.id);
+                    const hasAddons = (product.availableAddons && product.availableAddons.length > 0) || (product.addonGroups && product.addonGroups.length > 0);
 
-          {/* Right Panel: Cart & Payment */}
-          <aside className="w-80 flex flex-col gap-4 overflow-hidden shrink-0 print:hidden hidden md:flex">
-            {/* Order Summary Card */}
-            <div className="flex-1 bg-white rounded-3xl shadow-sm border-2 border-stone-200 flex flex-col overflow-hidden">
-              <div className="p-5 border-b border-stone-100">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-lg font-black text-stone-900">Current Order</h2>
+                    return (
+                      <div
+                        key={`${product.id}-${idx}`}
+                        onClick={() => addToCart(product)}
+                        className={`bg-white rounded-2xl p-3 sm:p-3.5 border transition-all duration-150 flex flex-col justify-between cursor-pointer select-none active:scale-[0.98] hover:shadow-xs min-h-[142px] sm:min-h-[150px] ${
+                          cartItem
+                            ? "border-[#D45D79] ring-2 ring-rose-200/70 shadow-xs"
+                            : "border-stone-200/80 hover:border-rose-300 shadow-[0_1px_3px_rgba(0,0,0,0.03)]"
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-1.5 mb-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-[#C44D69] bg-rose-50 px-2 py-0.5 rounded-md border border-rose-100 line-clamp-1">
+                              {product.category}
+                            </span>
+                            {hasAddons && (
+                              <span className="text-[9px] font-medium text-stone-500 bg-stone-100/80 px-1.5 py-0.5 rounded flex items-center gap-0.5 shrink-0">
+                                <Sparkles size={10} className="text-[#D45D79]" /> Kustom
+                              </span>
+                            )}
+                          </div>
+
+                          <h3 className="text-xs sm:text-sm font-bold text-stone-900 leading-snug line-clamp-2 mt-1">
+                            {product.name}
+                          </h3>
+                        </div>
+
+                        <div className="mt-auto pt-2.5 border-t border-stone-100 flex items-center justify-between gap-2">
+                          <span className="text-xs sm:text-sm font-black text-stone-900 tracking-tight">
+                            {formatRupiah(product.price)}
+                          </span>
+
+                          {cartItem ? (
+                            <div className="h-7 sm:h-7.5 px-2 rounded-lg flex items-center justify-center font-bold text-xs text-white bg-[#D45D79] shadow-xs gap-1 shrink-0">
+                              <span>{cartItem.quantity}x</span>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-lg bg-rose-50 hover:bg-[#D45D79] text-[#D45D79] hover:text-white border border-rose-200/60 flex items-center justify-center transition-colors shrink-0"
+                            >
+                              <Plus size={14} strokeWidth={2.5} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Panel: Docked Cart (Visible on iPad Landscape / Desktop >= 1024px) */}
+          <aside className="w-80 xl:w-[340px] flex flex-col gap-3 overflow-hidden shrink-0 print:hidden hidden lg:flex">
+            <div className="flex-1 bg-white rounded-3xl border border-stone-200/80 shadow-xs flex flex-col overflow-hidden">
+              {/* Cart Header */}
+              <div className="p-4 border-b border-stone-100 bg-stone-50/50">
+                <div className="flex justify-between items-center mb-3">
+                  <div className="flex items-center gap-2">
+                    <ShoppingBag size={17} className="text-[#D45D79]" />
+                    <h2 className="text-sm font-black text-stone-900">Pesanan Saat Ini</h2>
+                    <span className="text-[10px] bg-rose-100/70 text-[#C44D69] px-2 py-0.5 rounded-full font-bold">
+                      {cart.reduce((a, c) => a + c.quantity, 0)} item
+                    </span>
+                  </div>
                   {cart.length > 0 && (
                     <button
                       onClick={clearCart}
-                      className="text-stone-500 hover:text-[#D81B60] transition-colors p-1.5 bg-stone-100 hover:bg-pink-50 rounded-lg"
+                      className="text-stone-400 hover:text-red-600 transition-colors p-1.5 hover:bg-stone-100 rounded-lg"
                       title="Kosongkan keranjang"
                     >
-                      <Trash2 size={15} strokeWidth={2.5} />
+                      <Trash2 size={14} strokeWidth={2} />
                     </button>
                   )}
                 </div>
-                <div className="flex items-center bg-stone-50 rounded-xl px-3 border-2 border-stone-200 focus-within:border-[#D81B60] transition-all mb-3">
-                  <User size={16} className="text-stone-500" strokeWidth={2.5} />
+
+                {/* Customer Input */}
+                <div className="flex items-center bg-white rounded-xl px-2.5 py-1.5 border border-stone-200 text-xs focus-within:border-[#D45D79] focus-within:ring-1 focus-within:ring-rose-200 transition-all mb-2.5 shadow-2xs">
+                  <User size={14} className="text-stone-400 shrink-0 mr-2" />
                   <input
                     type="text"
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
-                    placeholder="Nama Pelanggan / Meja"
-                    className="w-full bg-transparent px-2.5 py-2.5 text-sm font-extrabold text-stone-900 placeholder-stone-400 outline-none"
+                    placeholder="Nama Pelanggan / Nomor Meja"
+                    className="w-full bg-transparent text-xs font-semibold text-stone-900 placeholder:text-stone-400 outline-none"
                   />
                 </div>
-                <div className="flex gap-2 p-1 bg-stone-100 rounded-xl border border-stone-200">
+
+                {/* Dine-in / Takeaway Toggle */}
+                <div className="flex gap-1.5 p-1 bg-stone-100 rounded-xl">
                   {(["Dine-in", "Takeaway"] as OrderType[]).map((type) => (
                     <button
                       key={type}
                       onClick={() => setOrderType(type)}
-                      className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all ${
+                      className={`flex-1 py-1 rounded-lg text-xs font-bold transition-all ${
                         orderType === type
-                          ? "bg-[#D81B60] text-white shadow-sm"
-                          : "text-stone-700 hover:text-stone-900"
+                          ? "bg-white text-stone-900 shadow-xs"
+                          : "text-stone-500 hover:text-stone-800"
                       }`}
                     >
                       {type}
@@ -2147,113 +2619,138 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Order Items Scroll Area */}
-              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 custom-scrollbar">
+              {/* Order Items List */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
                 {cart.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-stone-400 space-y-3 pb-8">
-                    <ShoppingBag size={44} className="opacity-40" strokeWidth={2} />
-                    <p className="text-sm font-black text-stone-500">
-                      Keranjang Kosong
-                    </p>
+                  <div className="h-full flex flex-col items-center justify-center text-stone-400 space-y-2 py-8">
+                    <div className="w-10 h-10 rounded-2xl bg-stone-50 flex items-center justify-center text-stone-300">
+                      <ShoppingBag size={20} strokeWidth={1.75} />
+                    </div>
+                    <p className="text-xs font-bold text-stone-400">Keranjang masih kosong</p>
+                    <p className="text-[11px] text-stone-400 text-center max-w-[180px]">Pilih menu di samping untuk menambahkan pesanan</p>
                   </div>
                 ) : (
-                  cart.map((item) => (
-                    <div key={item.id} className="flex gap-3 group items-center">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between gap-2">
-                          <h4 className="text-[13px] font-black text-stone-900 line-clamp-1 leading-snug">
+                  cart.map((item) => {
+                    const cartKey = item.cartId || item.id;
+                    return (
+                      <div key={cartKey} className="pb-3 border-b border-stone-100 last:border-b-0">
+                        <div className="flex justify-between items-start gap-2">
+                          <h4 className="text-xs font-bold text-stone-900 line-clamp-2 leading-snug">
                             {item.name}
                           </h4>
-                          <span className="text-[13px] font-black text-[#D81B60] whitespace-nowrap">
-                            {formatRupiah(item.price)}
+                          <span className="text-xs font-black text-stone-900 whitespace-nowrap">
+                            {formatRupiah(item.price * item.quantity)}
                           </span>
                         </div>
-                        <p className="text-[10px] text-stone-500 font-bold mb-1.5">
-                          {item.category}
-                        </p>
-                        <div className="flex items-center justify-between mt-1">
-                          <div className="flex items-center gap-2.5 bg-stone-100 rounded-lg p-0.5 border border-stone-200">
+
+                        <div className="flex items-center gap-1.5 text-[10px] text-stone-400 font-medium mt-0.5">
+                          <span>{item.category}</span>
+                          <span>•</span>
+                          <span>{formatRupiah(item.price)}</span>
+                        </div>
+
+                        {/* Selected Addons */}
+                        {item.selectedAddons && item.selectedAddons.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {item.selectedAddons.map((ad, aIdx) => (
+                              <span
+                                key={aIdx}
+                                className="text-[9px] bg-rose-50 text-[#C44D69] px-1.5 py-0.2 rounded font-medium border border-rose-100/80"
+                              >
+                                +{ad.optionName || ad.name} {ad.price ? `(${formatRupiah(ad.price)})` : ""}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Item Notes */}
+                        {item.itemNotes && (
+                          <p className="text-[10px] text-amber-800 bg-amber-50/80 px-2 py-0.5 rounded border border-amber-200/60 italic mt-1">
+                            "{item.itemNotes}"
+                          </p>
+                        )}
+
+                        {/* Quantity Stepper Controls */}
+                        <div className="flex items-center justify-between mt-2">
+                          <div className="flex items-center bg-stone-50 rounded-lg p-0.5 border border-stone-200/80 shadow-2xs">
                             <button
-                              onClick={() => updateQuantity(item.id, -1)}
-                              className="w-6 h-6 flex items-center justify-center rounded text-stone-700 hover:bg-stone-200 hover:text-stone-900 transition-colors"
+                              onClick={() => updateQuantity(cartKey, -1)}
+                              className="w-6 h-6 flex items-center justify-center rounded text-stone-600 hover:bg-stone-200/70 active:scale-95 transition-all"
                             >
-                              <Minus size={12} strokeWidth={3} />
+                              <Minus size={11} strokeWidth={2.5} />
                             </button>
-                            <span className="text-xs font-black w-3 text-center text-stone-900">
+                            <span className="text-xs font-bold w-5 text-center text-stone-900">
                               {item.quantity}
                             </span>
                             <button
-                              onClick={() => updateQuantity(item.id, 1)}
-                              className="w-6 h-6 flex items-center justify-center rounded text-[#D81B60] hover:bg-pink-100 transition-colors"
+                              onClick={() => updateQuantity(cartKey, 1)}
+                              className="w-6 h-6 flex items-center justify-center rounded text-[#D45D79] hover:bg-rose-100/70 active:scale-95 transition-all"
                             >
-                              <Plus size={12} strokeWidth={3} />
+                              <Plus size={11} strokeWidth={2.5} />
                             </button>
                           </div>
                           <button
-                            onClick={() => removeFromCart(item.id)}
-                            className="opacity-0 group-hover:opacity-100 text-stone-400 hover:text-[#D81B60] transition-opacity p-1"
+                            onClick={() => removeFromCart(cartKey)}
+                            className="text-stone-400 hover:text-red-500 transition-colors p-1"
+                            title="Hapus menu"
                           >
-                            <Trash2 size={14} strokeWidth={2.5} />
+                            <Trash2 size={13} strokeWidth={2} />
                           </button>
                         </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 
-              {/* Calculation */}
-              <div className="p-5 bg-stone-50 border-t-2 border-stone-200 space-y-2 mt-auto">
-                <div className="flex justify-between text-sm">
-                  <span className="text-stone-600 font-bold">Subtotal</span>
-                  <span className="font-black text-stone-900">
-                    {formatRupiah(subtotal)}
-                  </span>
+              {/* Cart Calculations */}
+              <div className="p-4 bg-stone-50/60 border-t border-stone-100 space-y-2">
+                <div className="flex justify-between text-xs font-medium text-stone-600">
+                  <span>Subtotal</span>
+                  <span className="font-bold text-stone-900">{formatRupiah(subtotal)}</span>
                 </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-stone-600 font-bold">Diskon</span>
+
+                <div className="flex justify-between items-center text-xs font-medium text-stone-600">
+                  <span>Diskon</span>
                   <div className="relative w-24">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-stone-500 text-[10px] font-bold">Rp</span>
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-stone-400 text-[10px] font-bold">Rp</span>
                     <input 
                       type="number" 
                       value={discount || ""}
                       onChange={(e) => setDiscount(Math.max(0, parseInt(e.target.value) || 0))}
-                      className="w-full pl-6 pr-2 py-1 text-right bg-white border border-stone-300 rounded text-xs text-stone-900 font-black focus:outline-none focus:border-[#D81B60] transition-colors hide-arrows"
+                      className="w-full pl-6 pr-2 py-0.5 text-right bg-white border border-stone-200 rounded-md text-xs text-stone-900 font-bold focus:outline-none focus:border-[#D45D79] transition-colors hide-arrows"
                       placeholder="0"
                     />
                   </div>
                 </div>
+
                 {TAX_RATE > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-stone-600 font-bold">
-                      PB1 ({(TAX_RATE * 100).toFixed(0)}%)
-                    </span>
-                    <span className="font-black text-stone-900">
-                      {formatRupiah(tax)}
-                    </span>
+                  <div className="flex justify-between text-xs font-medium text-stone-600">
+                    <span>PB1 ({(TAX_RATE * 100).toFixed(0)}%)</span>
+                    <span className="font-bold text-stone-900">{formatRupiah(tax)}</span>
                   </div>
                 )}
-                <div className="pt-3 border-t-2 border-stone-200 flex justify-between items-center mt-3">
-                  <span className="font-black text-stone-900 text-base">Total Amount</span>
-                  <span className="text-xl font-black text-[#D81B60]">
-                    {formatRupiah(total)}
-                  </span>
+
+                <div className="pt-2 border-t border-stone-200/80 flex justify-between items-center bg-rose-50/60 -mx-4 -mb-4 p-4 mt-2 border-b">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#C44D69] block">Total Pembayaran</span>
+                    <span className="text-lg font-black text-stone-900">{formatRupiah(total)}</span>
+                  </div>
+                  <button
+                    onClick={() => setIsCheckoutModalOpen(true)}
+                    disabled={cart.length === 0}
+                    className={`py-2.5 px-4 rounded-xl font-bold text-xs transition-all shadow-xs flex items-center gap-1.5 ${
+                      cart.length === 0
+                        ? "bg-stone-200 text-stone-400 cursor-not-allowed"
+                        : "bg-[#D45D79] hover:bg-[#C44D69] text-white active:scale-95"
+                    }`}
+                  >
+                    <span>Bayar</span>
+                    <ChevronRight size={14} strokeWidth={2.5} />
+                  </button>
                 </div>
               </div>
             </div>
-
-            {/* Payment Shortcuts & Checkout Process... */}
-            <button
-              onClick={() => setIsCheckoutModalOpen(true)}
-              disabled={cart.length === 0}
-              className={`w-full py-4 rounded-2xl font-black text-lg shadow-md flex items-center justify-center gap-2 transition-all shrink-0 ${
-                cart.length === 0
-                  ? "bg-stone-200 text-stone-400 shadow-none cursor-not-allowed"
-                  : "bg-[#D81B60] text-white hover:brightness-105 active:scale-95"
-              }`}
-            >
-              Process Payment
-            </button>
           </aside>
         </main>
       ) : (
@@ -2261,14 +2758,14 @@ export default function App() {
           <div className="max-w-6xl mx-auto w-full flex flex-col gap-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
               <div>
-                <h2 className="text-2xl sm:text-3xl font-black text-stone-900">
+                <h2 className="text-2xl sm:text-3xl font-black text-stone-950">
                   Management <span className="text-[#D81B60]">Dashboard</span>
                 </h2>
-                <p className="text-xs text-stone-600 font-bold tracking-wider mt-1 uppercase">
+                <p className="text-xs text-stone-800 font-black tracking-wider mt-1 uppercase">
                   Monitor business performance & inventory
                 </p>
               </div>
-              <div className="flex bg-white rounded-2xl shadow-xs border-2 border-stone-200 p-1 w-full sm:w-fit overflow-x-auto custom-scrollbar">
+              <div className="flex bg-stone-100 rounded-2xl shadow-xs border-2 border-stone-300 p-1 w-full sm:w-fit overflow-x-auto custom-scrollbar">
                 {(
                   [
                     "MENU",
@@ -2287,7 +2784,7 @@ export default function App() {
                     className={`flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap ${
                       managementTab === tab 
                         ? "bg-[#D81B60] text-white shadow-sm" 
-                        : "text-stone-700 hover:text-stone-900 hover:bg-stone-100"
+                        : "text-stone-900 hover:text-black hover:bg-stone-200"
                     }`}
                   >
                     {tab.replace("_", " ")}
@@ -2345,7 +2842,19 @@ export default function App() {
               {managementTab === "SETTINGS" && (
                 <ManagementSettings 
                   receiptSettings={receiptSettings} 
-                  setReceiptSettings={setReceiptSettings} 
+                  setReceiptSettings={(newVal: any) => {
+                    setReceiptSettings(newVal);
+                    queueSync("SETTINGS", "UPSERT", newVal);
+                  }}
+                  onTestPrint={handleTestPrintReceipt}
+                  onMigrateAllToFirebase={handleMigrateAllToFirebase}
+                  onImportFromSheets={handleImportFromSheets}
+                  isMigrating={isMigrating}
+                  isImportingSheets={isImportingSheets}
+                  firebaseConnected={isFirebaseConnected}
+                  orderHistoryCount={orderHistory.length}
+                  productListCount={productList.length}
+                  categoryCount={categories.length}
                 />
               )}
             </div>
@@ -2361,37 +2870,253 @@ export default function App() {
             <span>System Online</span>
           </div>
           <div className="flex items-center gap-1.5 hidden sm:flex">
+            <Database size={12} className="text-[#D81B60]" />
             <span>Database: </span>
-            <span className="text-[#5D4037] font-bold">
-              Legiy_Inventory_Sheets_V2
+            <span className="text-[#D81B60] font-black">
+              Firebase Firestore (mystic-chord-mnm8c)
             </span>
           </div>
           <div className="ml-auto italic">Legiy Dessert POS v1.0.4</div>
         </div>
       </footer>
 
-      {/* CHECKOUT MODAL */}
-      {isCheckoutModalOpen && !lastOrderDetails && (
-        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col flex-1 max-h-[90vh] border-2 border-stone-200">
-            <div className="p-6 border-b border-stone-200 bg-stone-50">
-              <h2 className="text-xl font-black text-stone-900">
-                Payment Process
-              </h2>
-              <p className="text-stone-600 text-sm font-bold mt-1">
-                Total Amount:{" "}
-                <span className="font-black text-[#D81B60] text-xl">
-                  {formatRupiah(total)}
+      {/* MOBILE / TABLET FLOATING CART BAR (Shown on small/medium screens when cart has items) */}
+      {cart.length > 0 && viewMode === "POS" && (
+        <div className="lg:hidden fixed bottom-14 left-3 right-3 z-40 bg-stone-900/95 backdrop-blur-sm text-white rounded-2xl p-3 shadow-xl flex items-center justify-between border border-stone-700/60 animate-in slide-in-from-bottom">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#D45D79] flex items-center justify-center text-white font-black text-xs shadow-xs">
+              {cart.reduce((a, c) => a + c.quantity, 0)}
+            </div>
+            <div>
+              <div className="text-[10px] text-stone-300 font-semibold tracking-wide uppercase">Total Pesanan</div>
+              <div className="text-base font-black text-white font-mono leading-tight">{formatRupiah(total)}</div>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsMobileCartOpen(true)}
+            className="bg-[#D45D79] hover:bg-[#C44D69] text-white px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs active:scale-95 transition-all"
+          >
+            <ShoppingBag size={15} />
+            <span>Lihat Keranjang</span>
+          </button>
+        </div>
+      )}
+
+      {/* MOBILE & TABLET CART DRAWER */}
+      {isMobileCartOpen && viewMode === "POS" && (
+        <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-xs z-50 flex flex-col justify-end lg:hidden">
+          <div className="bg-white rounded-t-3xl max-h-[85vh] flex flex-col border-t border-stone-200 shadow-2xl overflow-hidden animate-in slide-in-from-bottom">
+            {/* Header */}
+            <div className="p-4 border-b border-stone-100 flex justify-between items-center bg-stone-50/70">
+              <div className="flex items-center gap-2">
+                <ShoppingBag size={18} className="text-[#D45D79]" />
+                <h3 className="text-sm font-bold text-stone-900">Pesanan Pelanggan</h3>
+                <span className="text-[11px] bg-rose-50 text-[#D45D79] px-2 py-0.5 rounded-full font-bold border border-rose-200/60">
+                  {cart.reduce((a, c) => a + c.quantity, 0)} item
                 </span>
-              </p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {cart.length > 0 && (
+                  <button
+                    onClick={clearCart}
+                    className="p-2 text-stone-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors text-xs font-semibold"
+                    title="Kosongkan"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsMobileCartOpen(false)}
+                  className="p-2 text-stone-400 hover:text-stone-800 rounded-lg hover:bg-stone-100 transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
-            <div className="p-6 overflow-y-auto space-y-6 custom-scrollbar">
+            {/* Inputs: Customer & Order Type */}
+            <div className="p-4 bg-white border-b border-stone-100 space-y-2.5">
+              <div className="flex items-center bg-stone-50 rounded-xl px-3 border border-stone-200 focus-within:border-[#D45D79] focus-within:ring-2 focus-within:ring-[#D45D79]/10 transition-all">
+                <User size={15} className="text-stone-400 shrink-0" />
+                <input
+                  type="text"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Nama Pelanggan / Nomor Meja"
+                  className="w-full bg-transparent px-2.5 py-2 text-xs font-semibold text-stone-800 placeholder-stone-400 outline-none"
+                />
+              </div>
+
+              <div className="flex gap-1.5 p-1 bg-stone-100/80 rounded-xl border border-stone-200/80">
+                {(["Dine-in", "Takeaway"] as OrderType[]).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setOrderType(type)}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      orderType === type
+                        ? "bg-[#D45D79] text-white shadow-xs"
+                        : "text-stone-600 hover:text-stone-900 hover:bg-stone-200/60"
+                    }`}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Item List Scroll Area */}
+            <div className="p-4 overflow-y-auto max-h-[40vh] space-y-3 custom-scrollbar">
+              {cart.length === 0 ? (
+                <div className="text-center py-8 text-stone-400">
+                  <ShoppingBag size={32} className="mx-auto mb-2 opacity-30 text-stone-400" />
+                  <p className="text-xs font-semibold">Keranjang masih kosong</p>
+                </div>
+              ) : (
+                cart.map((item) => {
+                  const cartKey = item.cartId || item.id;
+                  return (
+                    <div key={cartKey} className="flex justify-between items-start pb-2.5 border-b border-stone-100 last:border-0 last:pb-0">
+                      <div className="flex-1 min-w-0 pr-2">
+                        <div className="flex justify-between items-start">
+                          <h4 className="text-xs font-bold text-stone-900 leading-snug">{item.name}</h4>
+                          <span className="text-xs font-bold text-[#D45D79] font-mono ml-2">
+                            {formatRupiah(item.price * item.quantity)}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-stone-400 font-medium">{formatRupiah(item.price)}/porsi</p>
+
+                        {/* Addons */}
+                        {item.selectedAddons && item.selectedAddons.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {item.selectedAddons.map((a, aIdx) => (
+                              <span key={aIdx} className="text-[9px] bg-rose-50 text-[#D45D79] px-1.5 py-0.5 rounded font-semibold border border-rose-200/60">
+                                +{a.optionName || a.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Note */}
+                        {item.itemNotes && (
+                          <p className="text-[10px] text-amber-800 bg-amber-50/80 px-1.5 py-0.5 rounded italic mt-1 border border-amber-200/50">
+                            "{item.itemNotes}"
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Quantity Controls */}
+                      <div className="flex items-center gap-1 bg-stone-100/90 rounded-lg p-0.5 border border-stone-200 shrink-0">
+                        <button
+                          onClick={() => updateQuantity(cartKey, -1)}
+                          className="w-6 h-6 flex items-center justify-center rounded text-stone-600 hover:bg-stone-200 active:scale-95"
+                        >
+                          <Minus size={11} strokeWidth={2.5} />
+                        </button>
+                        <span className="text-xs font-bold w-4 text-center text-stone-900">
+                          {item.quantity}
+                        </span>
+                        <button
+                          onClick={() => updateQuantity(cartKey, 1)}
+                          className="w-6 h-6 flex items-center justify-center rounded text-[#D45D79] hover:bg-rose-100/60 active:scale-95"
+                        >
+                          <Plus size={11} strokeWidth={2.5} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Calculations & Checkout */}
+            <div className="p-4 bg-stone-50/70 border-t border-stone-200/80 space-y-2">
+              <div className="flex justify-between text-xs font-medium text-stone-600">
+                <span>Subtotal</span>
+                <span className="font-bold text-stone-900">{formatRupiah(subtotal)}</span>
+              </div>
+              {discount > 0 && (
+                <div className="flex justify-between text-xs font-medium text-[#D45D79]">
+                  <span>Diskon</span>
+                  <span className="font-bold">-{formatRupiah(discount)}</span>
+                </div>
+              )}
+              {tax > 0 && (
+                <div className="flex justify-between text-xs font-medium text-stone-600">
+                  <span>PB1 ({(TAX_RATE * 100).toFixed(0)}%)</span>
+                  <span className="font-bold text-stone-900">{formatRupiah(tax)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-base font-black text-stone-900 pt-2 border-t border-stone-200/80">
+                <span>Total</span>
+                <span className="text-[#D45D79] font-mono">{formatRupiah(total)}</span>
+              </div>
+
+              <button
+                onClick={() => {
+                  setIsMobileCartOpen(false);
+                  setIsCheckoutModalOpen(true);
+                }}
+                disabled={cart.length === 0}
+                className={`w-full py-3 rounded-xl font-bold text-xs transition-all shadow-xs mt-2 flex items-center justify-center gap-2 ${
+                  cart.length === 0
+                    ? "bg-stone-200 text-stone-400 cursor-not-allowed"
+                    : "bg-[#D45D79] hover:bg-[#C44D69] text-white active:scale-98"
+                }`}
+              >
+                <span>Lanjut ke Pembayaran</span>
+                <span className="font-mono">• {formatRupiah(total)}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOMIZE / ADDON SELECTION MODAL */}
+      {customizingProduct && (
+        <AddonSelectionModal
+          product={customizingProduct}
+          onClose={() => setCustomizingProduct(null)}
+          onConfirm={(prod, qty, addons, notes) => {
+            handleAddToCartWithAddons(prod, qty, addons, notes);
+            setCustomizingProduct(null);
+          }}
+        />
+      )}
+
+      {/* CHECKOUT MODAL */}
+      {isCheckoutModalOpen && !lastOrderDetails && (
+        <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 print:hidden">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] border border-stone-200">
+            <div className="p-4 sm:p-5 border-b border-stone-100 bg-stone-50/60 flex justify-between items-center">
               <div>
-                <label className="text-[11px] font-black text-stone-700 tracking-wider uppercase mb-3 block">
-                  Payment Method
+                <h2 className="text-base sm:text-lg font-black text-stone-900">
+                  Pembayaran Pesanan
+                </h2>
+                <p className="text-stone-500 text-xs font-semibold mt-0.5">
+                  Total Tagihan:{" "}
+                  <span className="font-black text-[#D45D79] text-base font-mono">
+                    {formatRupiah(total)}
+                  </span>
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setIsCheckoutModalOpen(false);
+                  setPaymentMethod("");
+                  setCashAmount("");
+                }}
+                className="p-1.5 text-stone-400 hover:text-stone-700 rounded-lg hover:bg-stone-100 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-5 overflow-y-auto space-y-4 custom-scrollbar">
+              <div>
+                <label className="text-[11px] font-bold text-stone-600 tracking-wider uppercase mb-2 block">
+                  Metode Pembayaran
                 </label>
-                <div className="grid grid-cols-2 gap-2 mb-4">
+                <div className="grid grid-cols-2 gap-2">
                   {["Cash", "QRIS", "Transfer Bank", "E-Wallet"].map((cat) => {
                     const isTransferAct = paymentMethod.includes("Transfer");
                     const isEwalletAct = [
@@ -2423,21 +3148,21 @@ export default function App() {
                           else if (cat === "E-Wallet")
                             setPaymentMethod("Gopay");
                         }}
-                        className={`rounded-2xl flex items-center justify-start px-3 py-2.5 gap-3 transition-all outline-none border-2
+                        className={`rounded-xl flex items-center justify-start px-3 py-2.5 gap-2.5 transition-all outline-none border text-left
                           ${
                             isActive
-                              ? "bg-stone-900 text-white border-stone-900 shadow-md ring-2 ring-[#D81B60] ring-offset-1"
-                              : "bg-white border-stone-200 text-stone-800 hover:bg-stone-50 hover:border-stone-300"
+                              ? "bg-rose-50/70 text-stone-900 border-[#D45D79] shadow-xs ring-1 ring-[#D45D79]"
+                              : "bg-white border-stone-200 text-stone-700 hover:bg-stone-50 hover:border-stone-300"
                           }
                         `}
                       >
                         <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-sm ${isActive ? "bg-white/20" : "bg-stone-100"}`}
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-sm ${isActive ? "bg-white text-stone-900 shadow-xs" : "bg-stone-100"}`}
                         >
                           {icon}
                         </div>
                         <span
-                          className={`text-xs font-black ${isActive ? "text-white" : "text-stone-900"}`}
+                          className={`text-xs font-bold ${isActive ? "text-[#C44D69]" : "text-stone-800"}`}
                         >
                           {cat}
                         </span>
@@ -2447,9 +3172,9 @@ export default function App() {
                 </div>
 
                 {paymentMethod.includes("Transfer") && (
-                  <div className="animate-in fade-in slide-in-from-top-2 duration-300 mb-4 bg-stone-50 p-3.5 rounded-2xl border-2 border-stone-200">
-                    <label className="text-[11px] font-black text-stone-700 tracking-wider uppercase mb-2 block">
-                      Pilih Bank
+                  <div className="animate-in fade-in slide-in-from-top-2 duration-200 mt-3 bg-stone-50 p-3 rounded-xl border border-stone-200">
+                    <label className="text-[10px] font-bold text-stone-600 tracking-wider uppercase mb-1.5 block">
+                      Pilih Bank Transfer
                     </label>
                     <div className="flex gap-2">
                       {["Transfer BRI", "Transfer JAGO"].map((bank) => (
@@ -2458,7 +3183,7 @@ export default function App() {
                           onClick={() =>
                             setPaymentMethod(bank as PaymentMethod)
                           }
-                          className={`flex-1 py-2 rounded-xl text-xs font-black transition-all outline-none ${paymentMethod === bank ? "bg-blue-600 text-white shadow-md" : "bg-white text-stone-800 border-2 border-stone-200 hover:bg-stone-100"}`}
+                          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all outline-none border ${paymentMethod === bank ? "bg-[#D45D79] text-white border-[#D45D79] shadow-xs" : "bg-white text-stone-700 border-stone-200 hover:bg-stone-100"}`}
                         >
                           {bank.replace("Transfer ", "")}
                         </button>
@@ -2468,8 +3193,8 @@ export default function App() {
                 )}
 
                 {["Gopay", "Dana", "Shopeepay"].includes(paymentMethod) && (
-                  <div className="animate-in fade-in slide-in-from-top-2 duration-300 mb-4 bg-stone-50 p-3.5 rounded-2xl border-2 border-stone-200">
-                    <label className="text-[11px] font-black text-stone-700 tracking-wider uppercase mb-2 block">
+                  <div className="animate-in fade-in slide-in-from-top-2 duration-200 mt-3 bg-stone-50 p-3 rounded-xl border border-stone-200">
+                    <label className="text-[10px] font-bold text-stone-600 tracking-wider uppercase mb-1.5 block">
                       Pilih E-Wallet
                     </label>
                     <div className="flex gap-2">
@@ -2479,7 +3204,7 @@ export default function App() {
                           onClick={() =>
                             setPaymentMethod(ewallet as PaymentMethod)
                           }
-                          className={`flex-1 py-2 rounded-xl text-xs font-black transition-all outline-none ${paymentMethod === ewallet ? "bg-emerald-600 text-white shadow-md" : "bg-white text-stone-800 border-2 border-stone-200 hover:bg-stone-100"}`}
+                          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all outline-none border ${paymentMethod === ewallet ? "bg-[#D45D79] text-white border-[#D45D79] shadow-xs" : "bg-white text-stone-700 border-stone-200 hover:bg-stone-100"}`}
                         >
                           {ewallet}
                         </button>
@@ -2490,47 +3215,50 @@ export default function App() {
               </div>
 
               {paymentMethod === "Cash" && (
-                <div className="animate-in fade-in slide-in-from-top-4 duration-300">
-                  <label className="text-[11px] font-black text-stone-700 tracking-wider uppercase mb-3 block">
-                    Cash Received (Rp)
+                <div className="animate-in fade-in slide-in-from-top-2 duration-200 pt-1">
+                  <label className="text-[11px] font-bold text-stone-600 tracking-wider uppercase mb-1.5 block">
+                    Uang Diterima (Cash)
                   </label>
-                  <input
-                    type="text"
-                    value={cashAmount}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, "");
-                      setCashAmount(
-                        val ? parseInt(val).toLocaleString("id-ID") : "",
-                      );
-                    }}
-                    placeholder="e.g. 100000"
-                    className="w-full text-2xl font-black p-4 bg-white border-2 rounded-2xl border-stone-300 focus:border-[#D81B60] focus:bg-white focus:ring-4 focus:ring-[#D81B60]/10 outline-none transition-all text-stone-900 placeholder-stone-400"
-                    autoFocus
-                  />
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 font-bold text-sm">Rp</span>
+                    <input
+                      type="text"
+                      value={cashAmount}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, "");
+                        setCashAmount(
+                          val ? parseInt(val).toLocaleString("id-ID") : "",
+                        );
+                      }}
+                      placeholder="0"
+                      className="w-full pl-10 pr-3 py-2.5 text-xl font-bold bg-white border border-stone-200 rounded-xl focus:border-[#D45D79] focus:ring-2 focus:ring-[#D45D79]/10 outline-none transition-all text-stone-900 placeholder-stone-300"
+                      autoFocus
+                    />
+                  </div>
 
                   {/* Quick Cash Buttons */}
-                  <div className="grid grid-cols-4 gap-2 mt-3">
+                  <div className="grid grid-cols-4 gap-1.5 mt-2">
                     {[20000, 50000, 100000, total].map((amount) => (
                       <button
                         key={amount}
                         onClick={() =>
                           setCashAmount(amount.toLocaleString("id-ID"))
                         }
-                        className="py-2.5 bg-white border-2 border-stone-200 hover:border-stone-400 rounded-xl text-xs font-black text-stone-800 shadow-xs"
+                        className="py-1.5 bg-stone-50 hover:bg-stone-100 border border-stone-200 rounded-lg text-xs font-bold text-stone-700 transition-colors"
                       >
                         {amount === total
-                          ? "Pas (Exact)"
-                          : amount / 1000 + "K"}
+                          ? "Uang Pas"
+                          : (amount / 1000) + "K"}
                       </button>
                     ))}
                   </div>
 
                   {cashGiven >= total && (
-                    <div className="mt-5 p-4 bg-emerald-50 rounded-2xl border-2 border-emerald-200 text-center">
-                      <p className="text-xs font-black text-emerald-900 uppercase tracking-wider mb-1">
-                        Change Return (Kembalian)
+                    <div className="mt-3 p-3 bg-emerald-50/80 rounded-xl border border-emerald-200 text-center">
+                      <p className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider mb-0.5">
+                        Kembalian (Change)
                       </p>
-                      <p className="text-3xl font-black text-emerald-700">
+                      <p className="text-xl font-black text-emerald-700 font-mono">
                         {formatRupiah(change)}
                       </p>
                     </div>
@@ -2539,17 +3267,17 @@ export default function App() {
               )}
             </div>
 
-            <div className="p-6 border-t-2 border-stone-200 bg-white flex gap-3">
+            <div className="p-4 border-t border-stone-100 bg-stone-50/50 flex gap-2">
               <button
                 onClick={() => {
                   setIsCheckoutModalOpen(false);
                   setPaymentMethod("");
                   setCashAmount("");
                 }}
-                className="px-6 py-4 rounded-2xl font-black text-stone-700 bg-stone-100 hover:bg-stone-200 transition-colors flex-none"
+                className="px-4 py-2.5 rounded-xl font-bold text-xs text-stone-600 bg-white border border-stone-200 hover:bg-stone-100 transition-colors flex-none"
                 disabled={isProcessing}
               >
-                Cancel
+                Batal
               </button>
               <button
                 onClick={handleCheckout}
@@ -2558,16 +3286,16 @@ export default function App() {
                   (paymentMethod === "Cash" && cashGiven < total) ||
                   isProcessing
                 }
-                className={`flex-1 py-4 rounded-2xl font-black flex items-center justify-center transition-all text-base
+                className={`flex-1 py-2.5 rounded-xl font-bold flex items-center justify-center transition-all text-xs shadow-xs
                   ${
                     !paymentMethod ||
                     (paymentMethod === "Cash" && cashGiven < total) ||
                     isProcessing
                       ? "bg-stone-200 text-stone-400 cursor-not-allowed shadow-none"
-                      : "bg-[#D81B60] hover:brightness-105 active:scale-95 text-white shadow-md shadow-[#D81B60]/20"
+                      : "bg-[#D45D79] hover:bg-[#C44D69] active:scale-95 text-white"
                   }`}
               >
-                {isProcessing ? "Processing Sync..." : "Complete Transaction"}
+                {isProcessing ? "Menyimpan Transaksi..." : "Selesaikan Transaksi"}
               </button>
             </div>
           </div>
@@ -2575,66 +3303,92 @@ export default function App() {
       )}
 
       {/* RECEIPT MODAL (AND PRINT VIEW) */}
-      {lastOrderDetails && (
+      {lastOrderDetails && (() => {
+        const modalItems = (Array.isArray(lastOrderDetails.cartSnapshot) && lastOrderDetails.cartSnapshot.length > 0)
+          ? lastOrderDetails.cartSnapshot
+          : (Array.isArray(lastOrderDetails.items) && lastOrderDetails.items.length > 0)
+            ? lastOrderDetails.items
+            : getCartSnapshotOrFallback(lastOrderDetails, productList);
+
+        return (
         <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:bg-white print:p-0">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col print:shadow-none print:w-full print:-mt-8">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col print:shadow-none print:w-full print:-mt-8 border-4 border-stone-900">
             {/* Receipt Content */}
-            <div className="p-8 pb-4" id="receipt-content">
-              <div className="text-center mb-6 border-b-2 border-dashed border-stone-200 pb-6">
-                <div className="flex justify-center mb-3">
-                  <div className="w-28 sm:w-32 h-auto bg-white border border-stone-200 rounded-xl flex items-center justify-center p-2 shadow-xs">
-                    <img src={STORE_LOGO} alt="Logo" className="w-full h-auto object-contain" />
+            <div className="p-6 pb-4 font-mono text-black max-h-[75vh] overflow-y-auto" id="receipt-content">
+              <div className="text-center mb-4 border-b-2 border-dashed border-black pb-4">
+                {receiptSettings.showLogo !== false && (
+                  <div className="flex justify-center mb-2">
+                    <div className="w-28 h-auto bg-white flex items-center justify-center p-1">
+                      <img src={STORE_LOGO_PRINT} alt="Logo" className="w-full h-auto object-contain filter contrast-200" />
+                    </div>
                   </div>
-                </div>
+                )}
                 {isEditingReceipt ? (
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 text-left">
                     <div>
-                      <label className="text-[9px] font-bold text-[#D81B60] block uppercase tracking-wider text-left">Nama Toko</label>
+                      <label className="text-[9px] font-black text-[#D81B60] block uppercase tracking-wider">Nama Toko</label>
                       <input
                         type="text"
-                        className="text-center font-bold text-sm text-stone-800 p-1.5 border rounded-lg w-full outline-none focus:border-[#D81B60] focus:ring-1 focus:ring-[#D81B60]"
-                        value={receiptSettings.storeName}
+                        className="font-black text-sm text-black p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
+                        value={receiptSettings.storeName || ""}
                         onChange={(e) => setReceiptSettings({ ...receiptSettings, storeName: e.target.value })}
                       />
                     </div>
                     <div>
-                      <label className="text-[9px] font-bold text-[#D81B60] block uppercase tracking-wider text-left">Alamat Toko</label>
+                      <label className="text-[9px] font-black text-[#D81B60] block uppercase tracking-wider">Alamat Toko</label>
                       <input
                         type="text"
-                        className="text-center text-xs text-stone-500 p-1.5 border rounded-lg w-full outline-none focus:border-[#D81B60] focus:ring-1 focus:ring-[#D81B60]"
-                        value={receiptSettings.storeAddress}
+                        className="text-xs font-bold text-black p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
+                        value={receiptSettings.storeAddress || ""}
                         onChange={(e) => setReceiptSettings({ ...receiptSettings, storeAddress: e.target.value })}
                       />
                     </div>
-                    <div>
-                      <label className="text-[9px] font-bold text-[#D81B60] block uppercase tracking-wider text-left">No. Telepon / WA</label>
-                      <input
-                        type="text"
-                        className="text-center text-xs font-semibold text-stone-700 p-1.5 border rounded-lg w-full outline-none focus:border-[#D81B60] focus:ring-1 focus:ring-[#D81B60]"
-                        value={receiptSettings.storePhone || ""}
-                        onChange={(e) => setReceiptSettings({ ...receiptSettings, storePhone: e.target.value })}
-                      />
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] font-black text-[#D81B60] block uppercase tracking-wider">No. WhatsApp</label>
+                        <input
+                          type="text"
+                          className="text-xs font-black text-black p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
+                          value={receiptSettings.storePhone || ""}
+                          onChange={(e) => setReceiptSettings({ ...receiptSettings, storePhone: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-[#D81B60] block uppercase tracking-wider">Instagram</label>
+                        <input
+                          type="text"
+                          className="text-xs font-bold text-black p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
+                          value={receiptSettings.instagram || ""}
+                          onChange={(e) => setReceiptSettings({ ...receiptSettings, instagram: e.target.value })}
+                        />
+                      </div>
                     </div>
                   </div>
                 ) : (
                   <>
-                    <h1 className="text-xl font-bold text-stone-800 tracking-tight mb-0.5">
-                      {receiptSettings.storeName}
+                    <h1 className="text-lg font-black text-black tracking-tight uppercase leading-snug">
+                      {receiptSettings.storeName || "Legiy's Dessert"}
                     </h1>
-                    <p className="text-xs text-stone-500 font-medium">
-                      {receiptSettings.storeAddress}
+                    {receiptSettings.storeTagline && (
+                      <p className="text-[10px] font-bold italic text-black mt-0.5">
+                        {receiptSettings.storeTagline}
+                      </p>
+                    )}
+                    <p className="text-xs text-black font-bold mt-0.5">
+                      {receiptSettings.storeAddress || "Perumahan TSI, Blok O.14, Cirebon"}
                     </p>
-                    <p className="text-xs text-stone-600 font-semibold mt-0.5">
+                    <p className="text-xs text-black font-black mt-0.5">
                       {receiptSettings.storePhone || "0812-1252-7520"}
+                      {receiptSettings.showInstagram !== false && receiptSettings.instagram ? ` | ${receiptSettings.instagram}` : ""}
                     </p>
                   </>
                 )}
               </div>
 
-              <div className="mb-6 font-mono text-xs space-y-1.5 text-stone-500">
+              <div className="mb-4 font-mono text-xs space-y-1 text-black font-bold">
                 <div className="flex justify-between">
                   <span>No Order:</span>{" "}
-                  <span className="text-stone-800">
+                  <span className="text-black font-black">
                     {lastOrderDetails.orderId}
                   </span>
                 </div>
@@ -2643,19 +3397,19 @@ export default function App() {
                   {isEditingReceipt ? (
                     <input
                       type="text"
-                      className="text-right p-1 border rounded-lg text-xs font-bold text-stone-850 w-36 outline-none focus:border-[#D81B60]"
+                      className="text-right p-1 border-2 border-stone-900 rounded-lg text-xs font-black text-black w-36 outline-none focus:border-[#D81B60]"
                       value={lastOrderDetails.customerName || ""}
                       onChange={(e) => setLastOrderDetails({ ...lastOrderDetails, customerName: e.target.value })}
                     />
                   ) : (
-                    <span className="text-stone-800 font-bold">
+                    <span className="text-black font-black uppercase">
                       {lastOrderDetails.customerName || "-"}
                     </span>
                   )}
                 </div>
                 <div className="flex justify-between">
                   <span>Tanggal:</span>{" "}
-                  <span className="text-stone-800">
+                  <span className="text-black font-bold">
                     {new Date(lastOrderDetails.timestamp).toLocaleDateString(
                       "id-ID",
                     )}{" "}
@@ -2667,29 +3421,39 @@ export default function App() {
                 </div>
                 <div className="flex justify-between">
                   <span>Tipe:</span>{" "}
-                  <span className="font-bold text-stone-800">
+                  <span className="font-black text-black uppercase">
                     {lastOrderDetails.orderType}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Metode:</span>{" "}
-                  <span className="text-stone-800">
+                  <span className="text-black font-black uppercase">
                     {lastOrderDetails.paymentMethod}
                   </span>
                 </div>
               </div>
 
-              <div className="mb-6 border-b-2 border-dashed border-stone-200 pb-5 space-y-3 relative">
-                {lastOrderDetails.cartSnapshot.map((item: any) => (
-                  <div key={item.id} className="text-sm">
-                    <div className="font-bold text-stone-800 leading-tight">
+              <div className="mb-4 border-b-2 border-dashed border-black pb-4 space-y-2.5">
+                {modalItems.map((item: any, idx: number) => (
+                  <div key={item.id || item.cartId || idx} className="text-xs">
+                    <div className="font-black text-black leading-tight uppercase text-[12.5px]">
                       {item.name}
                     </div>
-                    <div className="flex justify-between text-stone-500 text-xs mt-1 font-mono">
+                    {item.selectedAddons && item.selectedAddons.length > 0 && (
+                      <div className="text-[10px] text-stone-700 pl-2 font-mono">
+                        {item.selectedAddons.map((a: any) => `+ ${a.optionName || a.name}${a.price ? ` (${formatRupiah(a.price)})` : ""}`).join(", ")}
+                      </div>
+                    )}
+                    {item.itemNotes && (
+                      <div className="text-[10px] italic text-stone-600 pl-2">
+                        *{item.itemNotes}
+                      </div>
+                    )}
+                    <div className="flex justify-between text-black text-xs mt-0.5 font-bold pl-2">
                       <span>
                         {item.quantity} x {formatRupiah(item.price)}
                       </span>
-                      <span className="text-stone-800 font-bold">
+                      <span className="text-black font-black text-[13px]">
                         {formatRupiah(item.price * item.quantity)}
                       </span>
                     </div>
@@ -2697,75 +3461,105 @@ export default function App() {
                 ))}
               </div>
 
-              <div className="space-y-2 text-sm font-medium">
-                <div className="flex justify-between text-stone-500">
+              <div className="space-y-1.5 text-xs font-bold text-black">
+                <div className="flex justify-between">
                   <span>Subtotal</span>
-                  <span className="font-mono text-stone-800">
+                  <span className="font-black">
                     {formatRupiah(lastOrderDetails.subtotal)}
                   </span>
                 </div>
                 {lastOrderDetails.discount > 0 && (
                   <div className="flex justify-between text-[#D81B60]">
                     <span>Diskon</span>
-                    <span className="font-mono">
+                    <span className="font-black">
                       -{formatRupiah(lastOrderDetails.discount)}
                     </span>
                   </div>
                 )}
                 {lastOrderDetails.tax > 0 && (
-                  <div className="flex justify-between text-stone-500">
+                  <div className="flex justify-between">
                     <span>PB1</span>
-                    <span className="font-mono text-stone-800">
+                    <span className="font-black">
                       {formatRupiah(lastOrderDetails.tax)}
                     </span>
                   </div>
                 )}
-                <div className="flex justify-between text-lg font-black text-stone-800 pt-3 pb-3 border-y-2 border-stone-800 mt-2">
+                <div className="flex justify-between text-base font-black text-black py-2 border-y-2 border-black my-1">
                   <span>TOTAL</span>
                   <span>{formatRupiah(lastOrderDetails.total)}</span>
                 </div>
-                <div className="flex justify-between text-stone-500 mt-3 font-mono text-xs">
+                <div className="flex justify-between mt-2 font-bold text-xs">
                   <span>Bayar ({lastOrderDetails.paymentMethod})</span>
-                  <span className="text-stone-800">
-                    {formatRupiah(lastOrderDetails.cashGiven)}
+                  <span className="font-black">
+                    {formatRupiah(lastOrderDetails.cashGiven || lastOrderDetails.total)}
                   </span>
                 </div>
                 {lastOrderDetails.paymentMethod === "Cash" && (
-                  <div className="flex justify-between text-stone-500 pt-2 font-mono text-xs">
+                  <div className="flex justify-between pt-1 font-bold text-xs">
                     <span>Kembalian</span>
-                    <span className="text-stone-800">
-                      {formatRupiah(lastOrderDetails.change)}
+                    <span className="font-black text-[13px]">
+                      {formatRupiah(lastOrderDetails.change || 0)}
                     </span>
                   </div>
                 )}
               </div>
 
-              <div className="text-center mt-8 text-xs text-stone-400 font-medium space-y-1">
+              <div className="text-center mt-3 text-xs text-black font-bold space-y-1">
                 {isEditingReceipt ? (
-                  <div className="space-y-2 border-t border-dashed border-stone-200 pt-3">
+                  <div className="space-y-2 border-t-2 border-dashed border-black pt-3 text-left">
                     <div>
-                      <label className="text-[9px] font-bold text-[#D81B60] block uppercase tracking-wider text-left">Pesan Kaki 1</label>
+                      <label className="text-[9px] font-black text-[#D81B60] block uppercase tracking-wider">Quotes di Bawah Nota</label>
                       <input
                         type="text"
-                        className="text-center text-xs text-stone-600 p-1.5 border rounded-lg w-full outline-none focus:border-[#D81B60]"
-                        value={receiptSettings.footerText1}
+                        className="text-xs italic p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
+                        value={receiptSettings.quotesBelow || ""}
+                        onChange={(e) => setReceiptSettings({ ...receiptSettings, quotesBelow: e.target.value })}
+                        placeholder="Manisnya pas, bikin harimu lebih ceria ✨"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] font-black text-[#D81B60] block uppercase tracking-wider">Wi-Fi SSID</label>
+                        <input
+                          type="text"
+                          className="text-xs p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
+                          value={receiptSettings.wifiSsid || ""}
+                          onChange={(e) => setReceiptSettings({ ...receiptSettings, wifiSsid: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-[#D81B60] block uppercase tracking-wider">Wi-Fi Pass</label>
+                        <input
+                          type="text"
+                          className="text-xs font-mono p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
+                          value={receiptSettings.wifiPass || ""}
+                          onChange={(e) => setReceiptSettings({ ...receiptSettings, wifiPass: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black text-[#D81B60] block uppercase tracking-wider">Pesan Kaki 1</label>
+                      <input
+                        type="text"
+                        className="text-center text-xs text-black font-bold p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
+                        value={receiptSettings.footerText1 || ""}
                         onChange={(e) => setReceiptSettings({ ...receiptSettings, footerText1: e.target.value })}
                       />
                     </div>
                     <div>
-                      <label className="text-[9px] font-bold text-[#D81B60] block uppercase tracking-wider text-left">Pesan Kaki 2</label>
+                      <label className="text-[9px] font-black text-[#D81B60] block uppercase tracking-wider">Pesan Kaki 2</label>
                       <input
                         type="text"
-                        className="text-center text-xs font-bold text-stone-700 p-1.5 border rounded-lg w-full outline-none focus:border-[#D81B60]"
-                        value={receiptSettings.footerText2}
+                        className="text-center text-xs font-black text-black p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
+                        value={receiptSettings.footerText2 || ""}
                         onChange={(e) => setReceiptSettings({ ...receiptSettings, footerText2: e.target.value })}
                       />
                     </div>
                     <div>
-                      <label className="text-[9px] font-bold text-[#D81B60] block uppercase tracking-wider text-left">Link QR Code (Linktree/Sosmed)</label>
+                      <label className="text-[9px] font-black text-[#D81B60] block uppercase tracking-wider">Link QR Code (Linktree/Sosmed)</label>
                       <input
                         type="text"
-                        className="text-center text-xs text-blue-600 p-1.5 border rounded-lg w-full outline-none focus:border-[#D81B60]"
+                        className="text-center text-xs text-blue-700 font-bold p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
                         value={receiptSettings.qrCodeUrl || "https://linktr.ee/legiy_dessert"}
                         onChange={(e) => setReceiptSettings({ ...receiptSettings, qrCodeUrl: e.target.value })}
                       />
@@ -2773,31 +3567,57 @@ export default function App() {
                   </div>
                 ) : (
                   <>
-                    <p>{receiptSettings.footerText1}</p>
-                    <p className="font-bold mt-1 text-stone-700 tracking-wider">
-                      {receiptSettings.footerText2}
-                    </p>
-                    <div className="flex flex-col items-center justify-center mt-4 pt-3 border-t border-dashed border-stone-200">
-                      <div className="bg-white p-2 border border-stone-200 rounded-xl shadow-sm">
-                        <QRCodeCanvas
-                          value={receiptSettings.qrCodeUrl || "https://linktr.ee/legiy_dessert"}
-                          size={84}
-                          level="M"
-                        />
+                    {/* Wi-Fi Box */}
+                    {receiptSettings.showWifi !== false && (receiptSettings.wifiSsid || receiptSettings.wifiPass) && (
+                      <div className="border border-dashed border-black rounded-lg py-1 px-2 my-2 text-center text-[10px] font-bold">
+                        <span>📶 Wi-Fi: <span className="font-black">{receiptSettings.wifiSsid || "Legiy_Free_WiFi"}</span></span>
+                        {receiptSettings.wifiPass && (
+                          <span className="ml-2">Pass: <span className="font-black">{receiptSettings.wifiPass}</span></span>
+                        )}
                       </div>
-                      <p className="text-[10px] font-bold text-stone-600 mt-2">Scan untuk Menu & Sosmed</p>
-                      <p className="text-[9px] text-[#D81B60] font-medium tracking-tight">linktr.ee/legiy_dessert</p>
-                    </div>
+                    )}
+
+                    {/* Quotes di Bawah */}
+                    {receiptSettings.showQuotes !== false && receiptSettings.quotesBelow && (
+                      <div className="my-2 py-1.5 px-2 border-y border-dashed border-black text-center text-[11px] font-bold italic text-black">
+                        "{receiptSettings.quotesBelow}"
+                      </div>
+                    )}
+
+                    {receiptSettings.footerText1 && (
+                      <p className="font-bold">{receiptSettings.footerText1}</p>
+                    )}
+                    {receiptSettings.footerText2 && (
+                      <p className="font-black mt-0.5 text-black tracking-wider uppercase text-[11px]">
+                        {receiptSettings.footerText2}
+                      </p>
+                    )}
+
+                    {receiptSettings.showQrCode !== false && (
+                      <div className="flex flex-col items-center justify-center mt-3 pt-3 border-t-2 border-dashed border-black">
+                        <div className="bg-white p-2 border-2 border-black rounded-lg">
+                          <QRCodeCanvas
+                            value={receiptSettings.qrCodeUrl || "https://linktr.ee/legiy_dessert"}
+                            size={84}
+                            level="M"
+                            fgColor="#000000"
+                            bgColor="#ffffff"
+                          />
+                        </div>
+                        <p className="text-[10px] font-black text-black mt-2 uppercase">Scan untuk Menu & Sosmed</p>
+                        <p className="text-[9px] text-black font-bold tracking-tight">{receiptSettings.qrCodeUrl || "linktr.ee/legiy_dessert"}</p>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
             </div>
 
             {/* Actions */}
-            <div className="p-4 bg-stone-50 border-t border-stone-100 flex flex-col gap-2.5 print:hidden">
+            <div className="p-4 bg-stone-100 border-t-2 border-stone-900 flex flex-col gap-2.5 print:hidden">
               <button
                 onClick={() => setIsEditingReceipt(!isEditingReceipt)}
-                className={`w-full py-2.5 px-3 rounded-xl font-bold text-xs flex justify-center items-center transition-all border ${isEditingReceipt ? "bg-stone-800 text-white border-transparent" : "bg-white text-stone-600 border-stone-200 hover:bg-stone-50 shadow-sm"}`}
+                className={`w-full py-2.5 px-3 rounded-xl font-black text-xs flex justify-center items-center transition-all border ${isEditingReceipt ? "bg-stone-900 text-white border-transparent" : "bg-white text-stone-900 border-stone-400 hover:bg-stone-50 shadow-sm"}`}
               >
                 <Settings size={14} className="mr-1.5" />
                 {isEditingReceipt ? "Simpan Perubahan Struk" : "Edit Teks Struk (Alamat/Nama/Daftar)"}
@@ -2810,21 +3630,22 @@ export default function App() {
                     setIsCheckoutModalOpen(false);
                     setIsEditingReceipt(false);
                   }}
-                  className="flex-1 py-3 px-4 rounded-xl font-bold text-stone-500 bg-white border border-stone-200 hover:bg-stone-50 shadow-sm text-center text-xs transition-colors"
+                  className="flex-1 py-3 px-4 rounded-xl font-black text-stone-700 bg-white border border-stone-300 hover:bg-stone-50 shadow-sm text-center text-xs transition-colors"
                 >
                   Selesai (Done)
                 </button>
                 <button
                   onClick={printReceipt}
-                  className="flex-1 py-3 px-4 rounded-xl font-bold bg-[#D81B60] text-white hover:brightness-110 active:scale-95 shadow-lg shadow-[#D81B60]/20 flex justify-center items-center text-xs transition-all"
+                  className="flex-1 py-3 px-4 rounded-xl font-black bg-stone-950 text-white hover:bg-black active:scale-95 shadow-lg flex justify-center items-center text-xs transition-all border border-black"
                 >
-                  <Printer size={14} className="mr-1.5" /> Cetak Struk
+                  <Printer size={14} className="mr-1.5" /> Cetak Struk 80mm
                 </button>
               </div>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       </div>
 
@@ -2850,7 +3671,10 @@ export default function App() {
             height: auto !important;
             min-height: auto !important;
             overflow: visible !important;
-            background: white !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           #root-container, #root, #root-container * {
             height: auto !important;
@@ -2870,13 +3694,15 @@ export default function App() {
             width: 80mm !important;
             max-width: 80mm !important;
             display: block !important;
-            padding: 5mm 6mm !important;
+            padding: 4mm 5mm !important;
             box-sizing: border-box !important;
-            color: black !important;
+            color: #000000 !important;
             font-family: 'Courier New', Courier, monospace !important;
             font-size: 12px !important;
-            line-height: 1.3 !important;
-            background: white !important;
+            font-weight: 800 !important;
+            line-height: 1.25 !important;
+            background: #ffffff !important;
+            -webkit-font-smoothing: antialiased !important;
           }
           @page {
             margin: 0;
@@ -2885,129 +3711,183 @@ export default function App() {
         }
       `}</style>
 
-      {/* PRINTABLE RECEIPT TEMPLATE FOR 80MM (HIDDEN ON SCREEN) */}
-      {receiptToPrint && (
-        <div id="print-receipt" className="hidden print:block absolute top-0 left-0 bg-white z-[9999] w-[80mm] text-black font-mono text-[12px] leading-snug p-[5mm]">
+      {/* PRINTABLE RECEIPT TEMPLATE FOR 80MM (HIDDEN ON SCREEN, SHOWN ONLY ON PRINT) */}
+      {receiptToPrint && (() => {
+        const printableItems = (Array.isArray(receiptToPrint.cartSnapshot) && receiptToPrint.cartSnapshot.length > 0)
+          ? receiptToPrint.cartSnapshot
+          : (Array.isArray(receiptToPrint.items) && receiptToPrint.items.length > 0)
+            ? receiptToPrint.items
+            : getCartSnapshotOrFallback(receiptToPrint, productList);
+
+        return (
+        <div id="print-receipt" className="hidden print:block absolute top-0 left-0 bg-white z-[9999] w-[80mm] text-black font-mono text-[12px] leading-snug p-[4mm]">
           {/* Header Kop */}
-          <div className="text-center mb-2">
-            <div className="flex justify-center mb-1.5">
-              <img
-                src={STORE_LOGO_PRINT}
-                alt="Logo"
-                className="w-32 h-auto object-contain mx-auto mb-1"
-              />
+          <div className="text-center mb-1.5">
+            {receiptSettings.showLogo !== false && (
+              <div className="flex justify-center mb-1">
+                <img
+                  src={STORE_LOGO_PRINT}
+                  alt="Logo"
+                  className="w-36 h-auto object-contain mx-auto mb-1 filter contrast-200 grayscale"
+                />
+              </div>
+            )}
+            <div className="font-black text-[17px] uppercase tracking-tight text-black leading-tight">
+              {receiptSettings.storeName || "Legiy's Dessert"}
             </div>
-            <div className="font-bold text-[16px] tracking-tight">{receiptSettings.storeName}</div>
-            <div className="text-[11px] leading-tight mt-0.5">{receiptSettings.storeAddress}</div>
-            <div className="text-[11px] leading-tight font-medium mt-0.5">{receiptSettings.storePhone || "0812-1252-7520"}</div>
+            {receiptSettings.storeTagline && (
+              <div className="text-[10px] font-bold italic leading-tight mt-0.5 text-black">
+                {receiptSettings.storeTagline}
+              </div>
+            )}
+            <div className="text-[11.5px] font-bold leading-tight mt-0.5 text-black">
+              {receiptSettings.storeAddress || "Perumahan TSI, Blok O.14, Cirebon"}
+            </div>
+            <div className="text-[12px] font-black leading-tight mt-0.5 text-black">
+              {receiptSettings.storePhone || "0812-1252-7520"}
+              {receiptSettings.showInstagram !== false && receiptSettings.instagram ? ` | ${receiptSettings.instagram}` : ""}
+            </div>
           </div>
 
           <div className="border-b-2 border-dashed border-black my-2"></div>
 
           {/* Order Details */}
-          <div className="space-y-0.5 text-[11px]">
+          <div className="space-y-0.5 text-[11.5px] text-black font-bold">
             <div className="flex justify-between">
               <span>No. Order :</span>
-              <span className="font-bold">{receiptToPrint.orderId}</span>
+              <span className="font-black">{receiptToPrint.orderId}</span>
             </div>
             <div className="flex justify-between">
               <span>Customer   :</span>
-              <span className="font-bold">{receiptToPrint.customerName || "-"}</span>
+              <span className="font-black uppercase">{receiptToPrint.customerName || "-"}</span>
             </div>
             <div className="flex justify-between">
               <span>Tanggal    :</span>
-              <span>
+              <span className="font-bold">
                 {new Date(receiptToPrint.timestamp).toLocaleDateString("id-ID")}{" "}
                 {new Date(receiptToPrint.timestamp).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
               </span>
             </div>
             <div className="flex justify-between">
               <span>Tipe Order :</span>
-              <span className="font-bold">{receiptToPrint.orderType}</span>
+              <span className="font-black uppercase">{receiptToPrint.orderType}</span>
             </div>
             <div className="flex justify-between">
               <span>Metode     :</span>
-              <span>{receiptToPrint.paymentMethod}</span>
+              <span className="font-black uppercase">{receiptToPrint.paymentMethod}</span>
             </div>
           </div>
 
           <div className="border-b-2 border-dashed border-black my-2"></div>
 
           {/* Item List */}
-          <div className="space-y-1.5 my-1">
-            {receiptToPrint.cartSnapshot && receiptToPrint.cartSnapshot.map((item: any, idx: number) => (
+          <div className="space-y-2 my-1 text-black">
+            {printableItems.map((item: any, idx: number) => (
               <div key={idx} className="text-[12px]">
-                <div className="font-bold leading-tight">{item.name}</div>
-                <div className="flex justify-between text-[11px] pl-2">
+                <div className="font-black leading-tight uppercase text-[12.5px] text-black">
+                  {item.name}
+                </div>
+                {item.selectedAddons && item.selectedAddons.length > 0 && (
+                  <div className="text-[10px] pl-2 font-mono text-black">
+                    {item.selectedAddons.map((a: any) => `+ ${a.optionName || a.name}${a.price ? ` (${Number(a.price).toLocaleString("id-ID")})` : ""}`).join(", ")}
+                  </div>
+                )}
+                {item.itemNotes && (
+                  <div className="text-[10px] pl-2 italic text-black">
+                    *{item.itemNotes}
+                  </div>
+                )}
+                <div className="flex justify-between text-[11.5px] pl-2 font-bold text-black">
                   <span>{item.quantity} x {Number(item.price).toLocaleString("id-ID")}</span>
-                  <span className="font-bold">{Number(item.price * item.quantity).toLocaleString("id-ID")}</span>
+                  <span className="font-black text-[12.5px]">{Number(item.price * item.quantity).toLocaleString("id-ID")}</span>
                 </div>
               </div>
             ))}
-
-            {!receiptToPrint.cartSnapshot && receiptToPrint.items && typeof receiptToPrint.items === 'string' && (
-              <div className="whitespace-pre-wrap text-[11px]">
-                {receiptToPrint.items}
-              </div>
-            )}
           </div>
 
           <div className="border-b-2 border-dashed border-black my-2"></div>
 
           {/* Totals */}
-          <div className="space-y-1 text-[12px]">
+          <div className="space-y-1 text-[12px] text-black font-bold">
             <div className="flex justify-between">
               <span>Subtotal</span>
-              <span>{Number(receiptToPrint.subtotal).toLocaleString("id-ID")}</span>
+              <span className="font-black">{Number(receiptToPrint.subtotal).toLocaleString("id-ID")}</span>
             </div>
             {receiptToPrint.discount ? (
               <div className="flex justify-between">
                 <span>Diskon</span>
-                <span>-{Number(receiptToPrint.discount).toLocaleString("id-ID")}</span>
+                <span className="font-black">-{Number(receiptToPrint.discount).toLocaleString("id-ID")}</span>
               </div>
             ) : null}
             {receiptToPrint.tax > 0 ? (
               <div className="flex justify-between">
                 <span>PB1</span>
-                <span>{Number(receiptToPrint.tax).toLocaleString("id-ID")}</span>
+                <span className="font-black">{Number(receiptToPrint.tax).toLocaleString("id-ID")}</span>
               </div>
             ) : null}
-            <div className="border-b border-dashed border-black my-1"></div>
-            <div className="flex justify-between font-black text-[15px] pt-0.5">
+            <div className="border-y-2 border-black py-1.5 my-1 flex justify-between font-black text-[17px] text-black">
               <span>TOTAL</span>
               <span>Rp {Number(receiptToPrint.total).toLocaleString("id-ID")}</span>
             </div>
-            <div className="flex justify-between mt-1 text-[11px]">
+            <div className="flex justify-between mt-1 text-[11.5px]">
               <span>Bayar ({receiptToPrint.paymentMethod})</span>
-              <span>{Number(receiptToPrint.cashGiven).toLocaleString("id-ID")}</span>
+              <span className="font-black">{Number(receiptToPrint.cashGiven || receiptToPrint.paidAmount || receiptToPrint.total).toLocaleString("id-ID")}</span>
             </div>
             {receiptToPrint.paymentMethod === "Cash" && (
-              <div className="flex justify-between text-[11px]">
+              <div className="flex justify-between text-[12px]">
                 <span>Kembalian</span>
-                <span>{Number(receiptToPrint.change).toLocaleString("id-ID")}</span>
+                <span className="font-black">{Number(receiptToPrint.change || 0).toLocaleString("id-ID")}</span>
               </div>
             )}
           </div>
 
-          <div className="border-b-2 border-dashed border-black my-2.5"></div>
+          {/* Wi-Fi Details in Print */}
+          {receiptSettings.showWifi !== false && (receiptSettings.wifiSsid || receiptSettings.wifiPass) && (
+            <div className="border border-dashed border-black rounded-lg py-1 px-2 my-2 text-center text-[10.5px] font-bold">
+              <span>📶 Wi-Fi: <span className="font-black">{receiptSettings.wifiSsid || "Legiy_Free_WiFi"}</span></span>
+              {receiptSettings.wifiPass && (
+                <span className="ml-2">Pass: <span className="font-black">{receiptSettings.wifiPass}</span></span>
+              )}
+            </div>
+          )}
+
+          {/* Quotes below in Print */}
+          {receiptSettings.showQuotes !== false && receiptSettings.quotesBelow && (
+            <div className="my-2 py-1.5 px-2 border-y border-dashed border-black text-center text-[11px] font-bold italic text-black">
+              "{receiptSettings.quotesBelow}"
+            </div>
+          )}
+
+          <div className="border-b-2 border-dashed border-black my-2"></div>
 
           {/* Footer Messages & QR Code */}
-          <div className="text-center space-y-1 mt-2">
-            <div className="font-medium text-[11px]">{receiptSettings.footerText1}</div>
-            <div className="font-bold text-[12px]">{receiptSettings.footerText2}</div>
+          <div className="text-center space-y-1 mt-1 text-black">
+            {receiptSettings.footerText1 && (
+              <div className="font-bold text-[11.5px] leading-snug">{receiptSettings.footerText1}</div>
+            )}
+            {receiptSettings.footerText2 && (
+              <div className="font-black text-[12px] uppercase tracking-wide">{receiptSettings.footerText2}</div>
+            )}
 
-            <div className="flex flex-col items-center justify-center mt-3 pt-2">
-              <QRCodeCanvas
-                value={receiptSettings.qrCodeUrl || "https://linktr.ee/legiy_dessert"}
-                size={86}
-                level="M"
-              />
-              <div className="text-[10px] font-bold mt-1.5">Scan untuk Menu & Sosmed</div>
-              <div className="text-[9px]">linktr.ee/legiy_dessert</div>
-            </div>
+            {receiptSettings.showQrCode !== false && (
+              <div className="flex flex-col items-center justify-center mt-2.5 pt-2 border-t-2 border-dashed border-black">
+                <div className="bg-white p-1.5 border-2 border-black rounded-lg inline-block">
+                  <QRCodeCanvas
+                    value={receiptSettings.qrCodeUrl || "https://linktr.ee/legiy_dessert"}
+                    size={84}
+                    level="M"
+                    fgColor="#000000"
+                    bgColor="#ffffff"
+                  />
+                </div>
+                <div className="text-[10px] font-black mt-1.5 uppercase tracking-wide">Scan untuk Menu & Sosmed</div>
+                <div className="text-[9px] font-bold break-all">{receiptSettings.qrCodeUrl || "linktr.ee/legiy_dessert"}</div>
+              </div>
+            )}
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

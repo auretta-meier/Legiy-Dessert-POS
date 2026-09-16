@@ -1,5 +1,27 @@
 export type Category = string;
 
+export interface ProductAddonOption {
+  id?: string;
+  name: string;
+  price: number;
+}
+
+export interface ProductAddonGroup {
+  id?: string;
+  name?: string;
+  groupName?: string;
+  type: 'single' | 'multiple';
+  required?: boolean;
+  options: ProductAddonOption[];
+}
+
+export interface SelectedAddon {
+  groupName: string;
+  optionName: string;
+  name?: string;
+  price: number;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -7,7 +29,70 @@ export interface Product {
   cogs: number;
   category: Category;
   imageColor: string; // Used for a placeholder color
+  addons?: ProductAddonGroup[];
 }
+
+export const DEFAULT_BEVERAGE_ADDONS: ProductAddonGroup[] = [
+  {
+    groupName: 'Tingkat Gula (Sugar Level)',
+    type: 'single',
+    required: true,
+    options: [
+      { name: 'Normal Sugar (100%)', price: 0 },
+      { name: 'Less Sugar (50%)', price: 0 },
+      { name: 'Slight Sugar (25%)', price: 0 },
+      { name: 'No Sugar (0%)', price: 0 },
+      { name: 'Extra Sweet (120%)', price: 0 },
+    ],
+  },
+  {
+    groupName: 'Tingkat Es (Ice Level)',
+    type: 'single',
+    required: true,
+    options: [
+      { name: 'Normal Ice', price: 0 },
+      { name: 'Less Ice', price: 0 },
+      { name: 'No Ice', price: 0 },
+      { name: 'Extra Ice', price: 0 },
+      { name: 'Hot (Panas)', price: 0 },
+    ],
+  },
+  {
+    groupName: 'Extra Topping & Syrup',
+    type: 'multiple',
+    options: [
+      { name: 'Extra Espresso Shot', price: 8000 },
+      { name: 'Ganti Oat Milk', price: 10000 },
+      { name: 'Vanilla Syrup', price: 5000 },
+      { name: 'Caramel Syrup', price: 5000 },
+      { name: 'Grass Jelly / Boba', price: 5000 },
+    ],
+  },
+];
+
+export const DEFAULT_DESSERT_ADDONS: ProductAddonGroup[] = [
+  {
+    groupName: 'Suhu Penyajian',
+    type: 'single',
+    required: true,
+    options: [
+      { name: 'Dingin Segar (Chilled)', price: 0 },
+      { name: 'Suhu Ruang (Normal)', price: 0 },
+      { name: 'Dihangatkan (Warm)', price: 0 },
+    ],
+  },
+  {
+    groupName: 'Tambahan & Topping Spesial',
+    type: 'multiple',
+    options: [
+      { name: 'Extra Cheese Cream Dip', price: 7000 },
+      { name: 'Extra Choco Flakes', price: 5000 },
+      { name: '1 Scoop Vanilla Ice Cream', price: 12000 },
+      { name: 'Lilin Ulang Tahun + Greeting', price: 4000 },
+      { name: 'Gift Box & Pita Legiy', price: 8000 },
+    ],
+  },
+];
 
 export const initialCategories: string[] = ['Signature Dessert', 'Kopi', 'Non-Kopi', 'Add-ons'];
 

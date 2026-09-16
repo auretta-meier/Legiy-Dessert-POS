@@ -1,0 +1,97 @@
+{
+  "entities": {
+    "products": {
+      "title": "Products",
+      "description": "Menu items available for sale in the POS system",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique product ID" },
+        "name": { "type": "string", "description": "Product menu name" },
+        "price": { "type": "number", "description": "Selling price in IDR" },
+        "cogs": { "type": "number", "description": "Cost of goods sold in IDR" },
+        "category": { "type": "string", "description": "Product category" },
+        "imageColor": { "type": "string", "description": "Tailwind color class for avatar badge" },
+        "updatedAt": { "type": "string", "description": "ISO timestamp of last update" }
+      },
+      "required": ["id", "name", "price", "category"]
+    },
+    "categories": {
+      "title": "Categories",
+      "description": "Product categories for grouping menu items",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique category identifier or slug" },
+        "name": { "type": "string", "description": "Category display name" },
+        "sortOrder": { "type": "number", "description": "Display order index" }
+      },
+      "required": ["name"]
+    },
+    "orders": {
+      "title": "Orders",
+      "description": "Completed customer POS transactions",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "description": "Unique human-readable order ID e.g. LGY-123456" },
+        "timestamp": { "type": "string", "description": "ISO timestamp of order creation" },
+        "customerName": { "type": "string", "description": "Customer name or table label" },
+        "items": { "type": "string", "description": "Summary string of items ordered" },
+        "orderType": { "type": "string", "description": "Dine-in or Takeaway" },
+        "paymentMethod": { "type": "string", "description": "Payment method used" },
+        "subtotal": { "type": "number", "description": "Subtotal before discount and tax" },
+        "discount": { "type": "number", "description": "Discount applied in IDR" },
+        "tax": { "type": "number", "description": "Tax applied in IDR" },
+        "total": { "type": "number", "description": "Final paid total in IDR" },
+        "cashGiven": { "type": "number", "description": "Cash given by customer" },
+        "change": { "type": "number", "description": "Change returned to customer" },
+        "cartSnapshot": { "type": "array", "description": "Detailed line items snapshot" }
+      },
+      "required": ["orderId", "timestamp", "total", "paymentMethod"]
+    },
+    "expenses": {
+      "title": "Expenses",
+      "description": "Store operational expense records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique expense record ID" },
+        "date": { "type": "string", "description": "Date of expense (YYYY-MM-DD)" },
+        "title": { "type": "string", "description": "Expense title or description" },
+        "amount": { "type": "number", "description": "Expense amount in IDR" },
+        "category": { "type": "string", "description": "Expense category e.g. Bahan Baku, Operasional" },
+        "notes": { "type": "string", "description": "Optional notes" }
+      },
+      "required": ["id", "date", "title", "amount"]
+    },
+    "preOrders": {
+      "title": "PreOrders",
+      "description": "Pre-order dessert bookings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique pre-order ID" },
+        "customerName": { "type": "string", "description": "Customer name" },
+        "customerPhone": { "type": "string", "description": "Customer WhatsApp / phone number" },
+        "pickupDate": { "type": "string", "description": "Pickup or delivery date" },
+        "items": { "type": "string", "description": "Ordered items description" },
+        "total": { "type": "number", "description": "Total order amount in IDR" },
+        "dpAmount": { "type": "number", "description": "Down payment amount in IDR" },
+        "status": { "type": "string", "description": "Pending, Processing, or Completed" },
+        "notes": { "type": "string", "description": "Special request or notes" },
+        "timestamp": { "type": "string", "description": "ISO timestamp created" }
+      },
+      "required": ["id", "customerName", "pickupDate", "total"]
+    },
+    "settings": {
+      "title": "Settings",
+      "description": "Store and receipt configuration",
+      "type": "object",
+      "properties": {
+        "storeName": { "type": "string", "description": "Store display name" },
+        "storeAddress": { "type": "string", "description": "Store physical address" },
+        "storePhone": { "type": "string", "description": "Store phone number" },
+        "qrCodeUrl": { "type": "string", "description": "URL for QR code on receipt" },
+        "footerText1": { "type": "string", "description": "Receipt primary footer message" },
+        "footerText2": { "type": "string", "description": "Receipt secondary footer message" }
+      }
+    }
+  },
+  "firestoreRules": "firestore.rules"
+}

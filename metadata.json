@@ -1,6 +1,6 @@
 {
   "name": "Legiy Dessert POS",
-  "description": "Point of Sale application for Legiy Dessert. Features order calculation, payment processing, receipt generation, and Google Sheets synchronization.",
+  "description": "Point of Sale application for Legiy Dessert with real-time Firebase Firestore cloud backend, order calculation, payment processing, and receipt generation.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

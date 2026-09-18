@@ -78,14 +78,14 @@ import { STORE_LOGO, STORE_LOGO_PRINT } from "./logo";
 import CuteReceipt, { CUTE_FRAME_PRESETS, ReceiptFrameStyle } from "./components/CuteReceipt";
 
 export const DESSERT_QUOTES_PRESETS = [
-  "Manisnya pas, bikin harimu lebih ceria ✨",
-  "Life is short, eat dessert first! 🍰",
-  "Setiap gigitan adalah kebahagiaan 💖",
-  "Terima kasih telah menjadi bagian cerita manis kami 🥰",
-  "Dibuat dengan cinta, dinikmati dengan senyuman 😊",
-  "Dessert lezat untuk momen berharga Anda 🌸",
-  "Makan dessert dulu, bahagia kemudian 🧁",
-  "Terima kasih sudah mendukung UMKM kuliner lokal 🙏",
+  "Manisnya pas, bikin harimu lebih ceria!",
+  "Life is short, eat dessert first!",
+  "Setiap gigitan adalah kebahagiaan.",
+  "Terima kasih telah menjadi bagian cerita manis kami.",
+  "Dibuat dengan cinta, dinikmati dengan senyuman.",
+  "Dessert lezat untuk momen berharga Anda.",
+  "Makan dessert dulu, bahagia kemudian.",
+  "Terima kasih sudah mendukung UMKM kuliner lokal.",
 ];
 
 export const DEFAULT_RECEIPT_SETTINGS = {
@@ -96,7 +96,7 @@ export const DEFAULT_RECEIPT_SETTINGS = {
   instagram: "@legiy_dessert",
   wifiSsid: "Legiy_Free_WiFi",
   wifiPass: "manislegiy",
-  quotesBelow: "Manisnya pas, bikin harimu lebih ceria ✨",
+  quotesBelow: "Manisnya pas, bikin harimu lebih ceria!",
   footerText1: "Terima kasih atas kunjungannya!",
   footerText2: "Barang yang sudah dibeli tidak dapat ditukar",
   qrCodeUrl: "https://linktr.ee/legiy_dessert",
@@ -107,11 +107,11 @@ export const DEFAULT_RECEIPT_SETTINGS = {
   showWifi: true,
   showQuotes: true,
   showQrCode: true,
-  // Cute Aesthetics & Frames
+  // Cute Aesthetics & Frames (Optimized for thermal monochrome print)
   frameStyle: "ribbon" as ReceiptFrameStyle,
   showCuteDoodles: true,
   showHappinessMeter: true,
-  cuteHeaderMotto: "⋆ ˚｡⋆୨୧˚ SWEET DESSERT CAFE ˚୨୧⋆｡˚ ⋆",
+  cuteHeaderMotto: "* SWEET DESSERT CAFE *",
   cuteGreetingText: "Customer Tersayang :",
 };
 
@@ -1919,7 +1919,7 @@ function ManagementSettings({
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-base">{preset.icon}</span>
+                          <span className="text-xs font-mono font-black text-black bg-stone-100 px-1.5 py-0.5 rounded border border-stone-300">{preset.badge}</span>
                           {isSelected && (
                             <span className="w-2 h-2 rounded-full bg-[#D81B60]"></span>
                           )}
@@ -1948,13 +1948,13 @@ function ManagementSettings({
                       setReceiptSettings({ ...receiptSettings, cuteHeaderMotto: e.target.value })
                     }
                     className="w-full text-xs p-2.5 rounded-xl border-2 border-stone-200 bg-white outline-none focus:border-[#D81B60] font-bold text-stone-800"
-                    placeholder="⋆ ˚｡⋆୨୧˚ SWEET DESSERT CAFE ˚୨୧⋆｡˚ ⋆"
+                    placeholder="* SWEET DESSERT CAFE *"
                   />
                   <div className="flex flex-wrap gap-1 mt-1">
                     {[
-                      "⋆ ˚｡⋆୨୧˚ SWEET DESSERT CAFE ˚୨୧⋆｡˚ ⋆",
-                      "ʚ(｡˃ ᵕ ˂ )ɞ SWEET DESSERT DELIGHTS 🍰",
-                      "♡ LEGIY ARTISANAL DESSERT CAFE ♡",
+                      "* SWEET DESSERT CAFE *",
+                      "(*^_^*) SWEET DESSERT DELIGHTS",
+                      "=== LEGIY ARTISANAL DESSERT CAFE ===",
                     ].map((motto, mIdx) => (
                       <button
                         key={mIdx}
@@ -3535,7 +3535,10 @@ export default function App() {
                                 : "border-stone-200 bg-stone-50 text-stone-700 hover:bg-stone-100"
                             }`}
                           >
-                            <span>{p.icon} {p.label.split(" ")[0]}</span>
+                            <span className="flex items-center gap-1.5">
+                              <span className="font-mono text-[10px] bg-white border border-stone-300 px-1 py-0.5 rounded">{p.badge}</span>
+                              <span>{p.label.split(" ")[0]}</span>
+                            </span>
                             {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-[#D81B60]" />}
                           </button>
                         );
@@ -3789,6 +3792,13 @@ export default function App() {
           }
           #print-receipt, #print-receipt * {
             visibility: visible !important;
+            color: #000000 !important;
+            border-color: #000000 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            text-shadow: none !important;
+            box-shadow: none !important;
+            opacity: 1 !important;
           }
           #print-receipt {
             position: absolute !important;
@@ -3797,15 +3807,18 @@ export default function App() {
             width: 80mm !important;
             max-width: 80mm !important;
             display: block !important;
-            padding: 4mm 5mm !important;
+            padding: 2mm 3mm !important;
             box-sizing: border-box !important;
             color: #000000 !important;
-            font-family: 'Courier New', Courier, monospace !important;
+            font-family: 'Courier New', Courier, 'Lucida Console', Monaco, monospace !important;
             font-size: 12px !important;
             font-weight: 800 !important;
             line-height: 1.25 !important;
             background: #ffffff !important;
             -webkit-font-smoothing: antialiased !important;
+          }
+          #print-receipt img {
+            filter: contrast(200%) grayscale(100%) !important;
           }
           @page {
             margin: 0;

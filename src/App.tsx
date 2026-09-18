@@ -75,6 +75,7 @@ import {
 } from "./firebase";
 import { QRCodeCanvas } from "qrcode.react";
 import { STORE_LOGO, STORE_LOGO_PRINT } from "./logo";
+import CuteReceipt, { CUTE_FRAME_PRESETS, ReceiptFrameStyle } from "./components/CuteReceipt";
 
 export const DESSERT_QUOTES_PRESETS = [
   "Manisnya pas, bikin harimu lebih ceria ✨",
@@ -106,6 +107,12 @@ export const DEFAULT_RECEIPT_SETTINGS = {
   showWifi: true,
   showQuotes: true,
   showQrCode: true,
+  // Cute Aesthetics & Frames
+  frameStyle: "ribbon" as ReceiptFrameStyle,
+  showCuteDoodles: true,
+  showHappinessMeter: true,
+  cuteHeaderMotto: "⋆ ˚｡⋆୨୧˚ SWEET DESSERT CAFE ˚୨୧⋆｡˚ ⋆",
+  cuteGreetingText: "Customer Tersayang :",
 };
 
 function useLocalStorage<T>(key: string, initialValue: T) {
@@ -1859,164 +1866,191 @@ function ManagementSettings({
                   />
                   <span>QR Code</span>
                 </label>
+                <label className="flex items-center gap-2 p-2 rounded-xl border border-stone-200 bg-stone-50/50 cursor-pointer text-xs font-bold text-stone-700">
+                  <input
+                    type="checkbox"
+                    checked={receiptSettings.showHappinessMeter !== false}
+                    onChange={(e) =>
+                      setReceiptSettings({ ...receiptSettings, showHappinessMeter: e.target.checked })
+                    }
+                    className="rounded accent-[#D81B60]"
+                  />
+                  <span>Barometer Bahagia ⭐</span>
+                </label>
+                <label className="flex items-center gap-2 p-2 rounded-xl border border-stone-200 bg-stone-50/50 cursor-pointer text-xs font-bold text-stone-700 col-span-2 sm:col-span-1">
+                  <input
+                    type="checkbox"
+                    checked={receiptSettings.showCuteDoodles !== false}
+                    onChange={(e) =>
+                      setReceiptSettings({ ...receiptSettings, showCuteDoodles: e.target.checked })
+                    }
+                    className="rounded accent-[#D81B60]"
+                  />
+                  <span>Maskot Lucu & Doodle 🐰</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Section 5: Kustomisasi Frame & Ornamen Lucu (Cute Aesthetics) */}
+            <div className="space-y-3 pt-2 border-t border-stone-100">
+              <span className="text-[11px] font-black uppercase tracking-wider text-stone-500 flex items-center gap-1.5">
+                <Sparkles size={13} className="text-[#D81B60]" />
+                5. Kustomisasi Frame & Ornamen Lucu (Cute Aesthetics)
+              </span>
+
+              <div>
+                <label className="block text-xs font-black text-stone-700 mb-1.5">
+                  Pilih Gaya Frame / Bingkai Lucu
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {CUTE_FRAME_PRESETS.map((preset) => {
+                    const isSelected = (receiptSettings.frameStyle || "ribbon") === preset.id;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() =>
+                          setReceiptSettings({ ...receiptSettings, frameStyle: preset.id })
+                        }
+                        className={`p-2.5 rounded-xl border-2 text-left transition-all flex flex-col gap-1 ${
+                          isSelected
+                            ? "border-[#D81B60] bg-pink-50/80 shadow-xs"
+                            : "border-stone-200 bg-stone-50/50 hover:bg-stone-100 hover:border-stone-300"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-base">{preset.icon}</span>
+                          {isSelected && (
+                            <span className="w-2 h-2 rounded-full bg-[#D81B60]"></span>
+                          )}
+                        </div>
+                        <div className="text-xs font-black text-stone-800 leading-tight">
+                          {preset.label}
+                        </div>
+                        <div className="text-[9px] font-mono text-stone-500 truncate mt-0.5">
+                          {preset.divider}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-black text-stone-700 mb-1">
+                    Motto Banner Paling Atas
+                  </label>
+                  <input
+                    type="text"
+                    value={receiptSettings.cuteHeaderMotto || ""}
+                    onChange={(e) =>
+                      setReceiptSettings({ ...receiptSettings, cuteHeaderMotto: e.target.value })
+                    }
+                    className="w-full text-xs p-2.5 rounded-xl border-2 border-stone-200 bg-white outline-none focus:border-[#D81B60] font-bold text-stone-800"
+                    placeholder="⋆ ˚｡⋆୨୧˚ SWEET DESSERT CAFE ˚୨୧⋆｡˚ ⋆"
+                  />
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {[
+                      "⋆ ˚｡⋆୨୧˚ SWEET DESSERT CAFE ˚୨୧⋆｡˚ ⋆",
+                      "ʚ(｡˃ ᵕ ˂ )ɞ SWEET DESSERT DELIGHTS 🍰",
+                      "♡ LEGIY ARTISANAL DESSERT CAFE ♡",
+                    ].map((motto, mIdx) => (
+                      <button
+                        key={mIdx}
+                        type="button"
+                        onClick={() =>
+                          setReceiptSettings({ ...receiptSettings, cuteHeaderMotto: motto })
+                        }
+                        className="text-[9px] px-1.5 py-0.5 rounded bg-stone-100 hover:bg-pink-100 text-stone-700 font-bold"
+                      >
+                        Pilihan {mIdx + 1}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-stone-700 mb-1">
+                    Teks Sapaan Pelanggan
+                  </label>
+                  <input
+                    type="text"
+                    value={receiptSettings.cuteGreetingText || ""}
+                    onChange={(e) =>
+                      setReceiptSettings({ ...receiptSettings, cuteGreetingText: e.target.value })
+                    }
+                    className="w-full text-xs p-2.5 rounded-xl border-2 border-stone-200 bg-white outline-none focus:border-[#D81B60] font-bold text-stone-800"
+                    placeholder="Customer Tersayang :"
+                  />
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {[
+                      "Customer Tersayang :",
+                      "Untuk Kakak Manis :",
+                      "Pesanan Spesial Buat :",
+                    ].map((greet, gIdx) => (
+                      <button
+                        key={gIdx}
+                        type="button"
+                        onClick={() =>
+                          setReceiptSettings({ ...receiptSettings, cuteGreetingText: greet })
+                        }
+                        className="text-[9px] px-1.5 py-0.5 rounded bg-stone-100 hover:bg-pink-100 text-stone-700 font-bold"
+                      >
+                        {greet.split(" ")[0]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
 
             <div className="mt-1 bg-pink-50/70 border border-pink-200 text-stone-800 p-3 rounded-xl text-xs flex items-center gap-2.5 font-bold">
               <CheckCircle size={16} className="text-[#D81B60] flex-shrink-0" />
-              <span>Format struk otomatis disimpan dan disinkronkan ke Firebase Firestore (mode hemat kuota).</span>
+              <span>Format nota aesthetic otomatis disimpan dan disinkronkan ke Firebase Firestore.</span>
             </div>
           </div>
 
-          {/* Live Preview Card (80mm style) */}
+          {/* Live Preview Card (80mm Cute Style) */}
           <div className="lg:col-span-5 flex flex-col items-center">
             <div className="text-xs font-black text-stone-700 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-stone-900"></span>
-              <span>Pratinjau Nota Thermal 80mm</span>
+              <span className="w-2 h-2 rounded-full bg-[#D81B60] animate-pulse"></span>
+              <span>Pratinjau Nota Cute Thermal 80mm</span>
             </div>
-            <div className="bg-white border-4 border-stone-900 shadow-xl rounded-2xl p-5 w-full max-w-[340px] text-black font-mono text-[12px] leading-snug select-none">
-              {/* Header */}
-              <div className="text-center pb-1">
-                {receiptSettings.showLogo !== false && (
-                  <img
-                    src={STORE_LOGO_PRINT}
-                    alt="Logo"
-                    className="w-28 h-auto mx-auto mb-1.5 object-contain filter contrast-200"
-                  />
-                )}
-                <div className="font-black text-[16px] uppercase tracking-tight text-black">
-                  {receiptSettings.storeName || "Legiy's Dessert"}
-                </div>
-                {receiptSettings.storeTagline && (
-                  <div className="text-[10px] font-bold italic text-black mt-0.5">
-                    {receiptSettings.storeTagline}
-                  </div>
-                )}
-                <div className="text-[11px] font-bold text-black mt-0.5">
-                  {receiptSettings.storeAddress || "Perumahan TSI, Blok O.14, Cirebon"}
-                </div>
-                <div className="text-[11px] font-black text-black mt-0.5">
-                  {receiptSettings.storePhone || "0812-1252-7520"}
-                  {receiptSettings.showInstagram !== false && receiptSettings.instagram ? ` | ${receiptSettings.instagram}` : ""}
-                </div>
-              </div>
 
-              <div className="border-b-2 border-dashed border-black my-2"></div>
-
-              {/* Info */}
-              <div className="text-[11px] space-y-0.5 text-black font-bold">
-                <div className="flex justify-between">
-                  <span>No. Struk</span>
-                  <span className="font-black">LGY-892104</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Tanggal</span>
-                  <span className="font-black">
-                    {new Date().toLocaleDateString("id-ID")} {new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Customer</span>
-                  <span className="font-black">Kak Amanda</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Tipe Pesanan</span>
-                  <span className="font-black uppercase">Dine-in</span>
-                </div>
-              </div>
-
-              <div className="border-b-2 border-dashed border-black my-2"></div>
-
-              {/* Sample items */}
-              <div className="space-y-2 text-[12px] text-black">
-                <div>
-                  <div className="font-black uppercase">Pistachio Crepe Cake</div>
-                  <div className="flex justify-between font-bold text-[11px] pl-2">
-                    <span>1 x 38.000</span>
-                    <span className="font-black text-[12px]">38.000</span>
-                  </div>
-                </div>
-                <div>
-                  <div className="font-black uppercase">Iced Caramel Macchiato</div>
-                  <div className="flex justify-between font-bold text-[11px] pl-2">
-                    <span>2 x 25.000</span>
-                    <span className="font-black text-[12px]">50.000</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-b-2 border-dashed border-black my-2"></div>
-
-              {/* Totals */}
-              <div className="space-y-1 text-[12px] text-black font-bold">
-                <div className="flex justify-between">
-                  <span>Subtotal</span>
-                  <span className="font-black">88.000</span>
-                </div>
-                <div className="border-y-2 border-black py-1.5 my-1 flex justify-between font-black text-[16px]">
-                  <span>TOTAL</span>
-                  <span>Rp 88.000</span>
-                </div>
-                <div className="flex justify-between pt-0.5 text-[11px]">
-                  <span>Bayar (QRIS)</span>
-                  <span className="font-black">88.000</span>
-                </div>
-              </div>
-
-              {/* Wi-Fi Box in Preview */}
-              {receiptSettings.showWifi !== false && (receiptSettings.wifiSsid || receiptSettings.wifiPass) && (
-                <div className="border border-dashed border-black rounded-lg py-1 px-2 my-2 text-center text-[10px] font-bold">
-                  <span>📶 Wi-Fi: <span className="font-black">{receiptSettings.wifiSsid || "Legiy_Free_WiFi"}</span></span>
-                  {receiptSettings.wifiPass && (
-                    <span className="ml-2">Pass: <span className="font-black">{receiptSettings.wifiPass}</span></span>
-                  )}
-                </div>
-              )}
-
-              {/* Quotes di Bawah Struk */}
-              {receiptSettings.showQuotes !== false && receiptSettings.quotesBelow && (
-                <div className="my-2 py-1.5 px-2 border-y border-dashed border-black text-center text-[11px] font-bold italic text-black">
-                  "{receiptSettings.quotesBelow}"
-                </div>
-              )}
-
-              <div className="border-b-2 border-dashed border-black my-2"></div>
-
-              {/* Footer & QR Code */}
-              <div className="text-center pt-0.5 flex flex-col items-center text-black">
-                {receiptSettings.footerText1 && (
-                  <div className="text-[11px] font-bold mb-0.5">
-                    {receiptSettings.footerText1}
-                  </div>
-                )}
-                {receiptSettings.footerText2 && (
-                  <div className="text-[10.5px] font-black uppercase mb-1.5">
-                    {receiptSettings.footerText2}
-                  </div>
-                )}
-
-                {/* QR Code */}
-                {receiptSettings.showQrCode !== false && (
-                  <>
-                    <div className="bg-white p-2 rounded-lg border-2 border-black inline-block mt-1">
-                      <QRCodeCanvas
-                        value={receiptSettings.qrCodeUrl || "https://linktr.ee/legiy_dessert"}
-                        size={84}
-                        level="M"
-                        fgColor="#000000"
-                        bgColor="#ffffff"
-                      />
-                    </div>
-                    <div className="text-[10px] font-black text-black mt-1.5 uppercase tracking-wide">
-                      Scan untuk Menu & Sosmed
-                    </div>
-                    <div className="text-[9px] font-bold text-black mt-0.5 break-all">
-                      {receiptSettings.qrCodeUrl || "linktr.ee/legiy_dessert"}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
+            <CuteReceipt
+              order={{
+                orderId: "LGY-892104",
+                timestamp: Date.now(),
+                customerName: "Amanda",
+                orderType: "Dine-in",
+                paymentMethod: "QRIS",
+                subtotal: 88000,
+                discount: 5000,
+                tax: 0,
+                total: 83000,
+                paidAmount: 83000,
+                change: 0,
+                cartSnapshot: [
+                  {
+                    name: "Pistachio Crepe Cake",
+                    price: 38000,
+                    quantity: 1,
+                    selectedAddons: [{ optionName: "Extra Pistachio Crumb", price: 5000 }],
+                    itemNotes: "Piring terpisah yaa"
+                  },
+                  {
+                    name: "Iced Caramel Macchiato",
+                    price: 25000,
+                    quantity: 2,
+                    selectedAddons: [{ optionName: "Less Sugar (50%)", price: 0 }]
+                  }
+                ]
+              }}
+              settings={receiptSettings}
+              isPrint={false}
+              className="w-full max-w-[340px]"
+            />
           </div>
         </div>
       </div>
@@ -3453,303 +3487,127 @@ export default function App() {
         <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:bg-white print:p-0">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col print:shadow-none print:w-full print:-mt-8 border-4 border-stone-900">
             {/* Receipt Content */}
-            <div className="p-6 pb-4 font-mono text-black max-h-[75vh] overflow-y-auto" id="receipt-content">
-              <div className="text-center mb-4 border-b-2 border-dashed border-black pb-4">
-                {receiptSettings.showLogo !== false && (
-                  <div className="flex justify-center mb-2">
-                    <div className="w-28 h-auto bg-white flex items-center justify-center p-1">
-                      <img src={STORE_LOGO_PRINT} alt="Logo" className="w-full h-auto object-contain filter contrast-200" />
+            <div className="p-4 pb-3 max-h-[75vh] overflow-y-auto" id="receipt-content">
+              {isEditingReceipt ? (
+                <div className="space-y-3 text-left font-sans">
+                  <div className="flex items-center justify-between pb-2 border-b border-stone-200">
+                    <span className="text-xs font-black uppercase tracking-wider text-[#D81B60]">
+                      Kustomisasi Nota Sebelum Cetak
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingReceipt(false)}
+                      className="text-[10px] font-bold text-stone-500 hover:text-black"
+                    >
+                      Batal
+                    </button>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black text-stone-800 block uppercase tracking-wider mb-1">
+                      Nama Customer / Meja
+                    </label>
+                    <input
+                      type="text"
+                      className="text-xs font-black text-black p-2 border-2 border-stone-900 rounded-xl w-full outline-none focus:border-[#D81B60]"
+                      value={lastOrderDetails.customerName || ""}
+                      onChange={(e) => setLastOrderDetails({ ...lastOrderDetails, customerName: e.target.value })}
+                      placeholder="Contoh: Amanda"
+                    />
+                  </div>
+
+                  {/* Gaya Frame Lucu */}
+                  <div>
+                    <label className="text-[10px] font-black text-stone-800 block uppercase tracking-wider mb-1">
+                      Pilih Gaya Frame Nota Lucu
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {CUTE_FRAME_PRESETS.map((p) => {
+                        const isSelected = (receiptSettings.frameStyle || "ribbon") === p.id;
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => setReceiptSettings({ ...receiptSettings, frameStyle: p.id })}
+                            className={`p-2 rounded-xl text-left border-2 text-[11px] font-black flex items-center justify-between transition-all ${
+                              isSelected
+                                ? "border-[#D81B60] bg-pink-50 text-[#D81B60]"
+                                : "border-stone-200 bg-stone-50 text-stone-700 hover:bg-stone-100"
+                            }`}
+                          >
+                            <span>{p.icon} {p.label.split(" ")[0]}</span>
+                            {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-[#D81B60]" />}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
-                )}
-                {isEditingReceipt ? (
-                  <div className="space-y-1.5 text-left">
+
+                  {/* Quotes Manis */}
+                  <div>
+                    <label className="text-[10px] font-black text-stone-800 block uppercase tracking-wider mb-1">
+                      Quotes Manis Bawah
+                    </label>
+                    <input
+                      type="text"
+                      className="text-xs font-bold text-black p-2 border-2 border-stone-900 rounded-xl w-full outline-none focus:border-[#D81B60]"
+                      value={receiptSettings.quotesBelow || ""}
+                      onChange={(e) => setReceiptSettings({ ...receiptSettings, quotesBelow: e.target.value })}
+                    />
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {DESSERT_QUOTES_PRESETS.slice(0, 3).map((q, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setReceiptSettings({ ...receiptSettings, quotesBelow: q })}
+                          className="text-[9px] px-1.5 py-0.5 rounded bg-stone-100 hover:bg-pink-100 text-stone-700 font-bold"
+                        >
+                          Quote {idx + 1}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-1">
                     <div>
-                      <label className="text-[9px] font-black text-[#D81B60] block uppercase tracking-wider">Nama Toko</label>
+                      <label className="text-[9px] font-black text-stone-600 block uppercase tracking-wider">Nama Toko</label>
                       <input
                         type="text"
-                        className="font-black text-sm text-black p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
+                        className="text-xs font-bold text-black p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
                         value={receiptSettings.storeName || ""}
                         onChange={(e) => setReceiptSettings({ ...receiptSettings, storeName: e.target.value })}
                       />
                     </div>
                     <div>
-                      <label className="text-[9px] font-black text-[#D81B60] block uppercase tracking-wider">Alamat Toko</label>
+                      <label className="text-[9px] font-black text-stone-600 block uppercase tracking-wider">WhatsApp</label>
                       <input
                         type="text"
                         className="text-xs font-bold text-black p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
-                        value={receiptSettings.storeAddress || ""}
-                        onChange={(e) => setReceiptSettings({ ...receiptSettings, storeAddress: e.target.value })}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[9px] font-black text-[#D81B60] block uppercase tracking-wider">No. WhatsApp</label>
-                        <input
-                          type="text"
-                          className="text-xs font-black text-black p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
-                          value={receiptSettings.storePhone || ""}
-                          onChange={(e) => setReceiptSettings({ ...receiptSettings, storePhone: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[9px] font-black text-[#D81B60] block uppercase tracking-wider">Instagram</label>
-                        <input
-                          type="text"
-                          className="text-xs font-bold text-black p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
-                          value={receiptSettings.instagram || ""}
-                          onChange={(e) => setReceiptSettings({ ...receiptSettings, instagram: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <h1 className="text-lg font-black text-black tracking-tight uppercase leading-snug">
-                      {receiptSettings.storeName || "Legiy's Dessert"}
-                    </h1>
-                    {receiptSettings.storeTagline && (
-                      <p className="text-[10px] font-bold italic text-black mt-0.5">
-                        {receiptSettings.storeTagline}
-                      </p>
-                    )}
-                    <p className="text-xs text-black font-bold mt-0.5">
-                      {receiptSettings.storeAddress || "Perumahan TSI, Blok O.14, Cirebon"}
-                    </p>
-                    <p className="text-xs text-black font-black mt-0.5">
-                      {receiptSettings.storePhone || "0812-1252-7520"}
-                      {receiptSettings.showInstagram !== false && receiptSettings.instagram ? ` | ${receiptSettings.instagram}` : ""}
-                    </p>
-                  </>
-                )}
-              </div>
-
-              <div className="mb-4 font-mono text-xs space-y-1 text-black font-bold">
-                <div className="flex justify-between">
-                  <span>No Order:</span>{" "}
-                  <span className="text-black font-black">
-                    {lastOrderDetails.orderId}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span>Customer:</span>{" "}
-                  {isEditingReceipt ? (
-                    <input
-                      type="text"
-                      className="text-right p-1 border-2 border-stone-900 rounded-lg text-xs font-black text-black w-36 outline-none focus:border-[#D81B60]"
-                      value={lastOrderDetails.customerName || ""}
-                      onChange={(e) => setLastOrderDetails({ ...lastOrderDetails, customerName: e.target.value })}
-                    />
-                  ) : (
-                    <span className="text-black font-black uppercase">
-                      {lastOrderDetails.customerName || "-"}
-                    </span>
-                  )}
-                </div>
-                <div className="flex justify-between">
-                  <span>Tanggal:</span>{" "}
-                  <span className="text-black font-bold">
-                    {new Date(lastOrderDetails.timestamp).toLocaleDateString(
-                      "id-ID",
-                    )}{" "}
-                    {new Date(lastOrderDetails.timestamp).toLocaleTimeString(
-                      "id-ID",
-                      { hour: "2-digit", minute: "2-digit" },
-                    )}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Tipe:</span>{" "}
-                  <span className="font-black text-black uppercase">
-                    {lastOrderDetails.orderType}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Metode:</span>{" "}
-                  <span className="text-black font-black uppercase">
-                    {lastOrderDetails.paymentMethod}
-                  </span>
-                </div>
-              </div>
-
-              <div className="mb-4 border-b-2 border-dashed border-black pb-4 space-y-2.5">
-                {modalItems.map((item: any, idx: number) => (
-                  <div key={item.id || item.cartId || idx} className="text-xs">
-                    <div className="font-black text-black leading-tight uppercase text-[12.5px]">
-                      {item.name}
-                    </div>
-                    {item.selectedAddons && item.selectedAddons.length > 0 && (
-                      <div className="text-[10px] text-stone-700 pl-2 font-mono">
-                        {item.selectedAddons.map((a: any) => `+ ${a.optionName || a.name}${a.price ? ` (${formatRupiah(a.price)})` : ""}`).join(", ")}
-                      </div>
-                    )}
-                    {item.itemNotes && (
-                      <div className="text-[10px] italic text-stone-600 pl-2">
-                        *{item.itemNotes}
-                      </div>
-                    )}
-                    <div className="flex justify-between text-black text-xs mt-0.5 font-bold pl-2">
-                      <span>
-                        {item.quantity} x {formatRupiah(item.price)}
-                      </span>
-                      <span className="text-black font-black text-[13px]">
-                        {formatRupiah(item.price * item.quantity)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="space-y-1.5 text-xs font-bold text-black">
-                <div className="flex justify-between">
-                  <span>Subtotal</span>
-                  <span className="font-black">
-                    {formatRupiah(lastOrderDetails.subtotal)}
-                  </span>
-                </div>
-                {lastOrderDetails.discount > 0 && (
-                  <div className="flex justify-between text-[#D81B60]">
-                    <span>Diskon</span>
-                    <span className="font-black">
-                      -{formatRupiah(lastOrderDetails.discount)}
-                    </span>
-                  </div>
-                )}
-                {lastOrderDetails.tax > 0 && (
-                  <div className="flex justify-between">
-                    <span>PB1</span>
-                    <span className="font-black">
-                      {formatRupiah(lastOrderDetails.tax)}
-                    </span>
-                  </div>
-                )}
-                <div className="flex justify-between text-base font-black text-black py-2 border-y-2 border-black my-1">
-                  <span>TOTAL</span>
-                  <span>{formatRupiah(lastOrderDetails.total)}</span>
-                </div>
-                <div className="flex justify-between mt-2 font-bold text-xs">
-                  <span>Bayar ({lastOrderDetails.paymentMethod})</span>
-                  <span className="font-black">
-                    {formatRupiah(lastOrderDetails.cashGiven || lastOrderDetails.total)}
-                  </span>
-                </div>
-                {lastOrderDetails.paymentMethod === "Cash" && (
-                  <div className="flex justify-between pt-1 font-bold text-xs">
-                    <span>Kembalian</span>
-                    <span className="font-black text-[13px]">
-                      {formatRupiah(lastOrderDetails.change || 0)}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div className="text-center mt-3 text-xs text-black font-bold space-y-1">
-                {isEditingReceipt ? (
-                  <div className="space-y-2 border-t-2 border-dashed border-black pt-3 text-left">
-                    <div>
-                      <label className="text-[9px] font-black text-[#D81B60] block uppercase tracking-wider">Quotes di Bawah Nota</label>
-                      <input
-                        type="text"
-                        className="text-xs italic p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
-                        value={receiptSettings.quotesBelow || ""}
-                        onChange={(e) => setReceiptSettings({ ...receiptSettings, quotesBelow: e.target.value })}
-                        placeholder="Manisnya pas, bikin harimu lebih ceria ✨"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[9px] font-black text-[#D81B60] block uppercase tracking-wider">Wi-Fi SSID</label>
-                        <input
-                          type="text"
-                          className="text-xs p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
-                          value={receiptSettings.wifiSsid || ""}
-                          onChange={(e) => setReceiptSettings({ ...receiptSettings, wifiSsid: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[9px] font-black text-[#D81B60] block uppercase tracking-wider">Wi-Fi Pass</label>
-                        <input
-                          type="text"
-                          className="text-xs font-mono p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
-                          value={receiptSettings.wifiPass || ""}
-                          onChange={(e) => setReceiptSettings({ ...receiptSettings, wifiPass: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-[9px] font-black text-[#D81B60] block uppercase tracking-wider">Pesan Kaki 1</label>
-                      <input
-                        type="text"
-                        className="text-center text-xs text-black font-bold p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
-                        value={receiptSettings.footerText1 || ""}
-                        onChange={(e) => setReceiptSettings({ ...receiptSettings, footerText1: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[9px] font-black text-[#D81B60] block uppercase tracking-wider">Pesan Kaki 2</label>
-                      <input
-                        type="text"
-                        className="text-center text-xs font-black text-black p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
-                        value={receiptSettings.footerText2 || ""}
-                        onChange={(e) => setReceiptSettings({ ...receiptSettings, footerText2: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[9px] font-black text-[#D81B60] block uppercase tracking-wider">Link QR Code (Linktree/Sosmed)</label>
-                      <input
-                        type="text"
-                        className="text-center text-xs text-blue-700 font-bold p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
-                        value={receiptSettings.qrCodeUrl || "https://linktr.ee/legiy_dessert"}
-                        onChange={(e) => setReceiptSettings({ ...receiptSettings, qrCodeUrl: e.target.value })}
+                        value={receiptSettings.storePhone || ""}
+                        onChange={(e) => setReceiptSettings({ ...receiptSettings, storePhone: e.target.value })}
                       />
                     </div>
                   </div>
-                ) : (
-                  <>
-                    {/* Wi-Fi Box */}
-                    {receiptSettings.showWifi !== false && (receiptSettings.wifiSsid || receiptSettings.wifiPass) && (
-                      <div className="border border-dashed border-black rounded-lg py-1 px-2 my-2 text-center text-[10px] font-bold">
-                        <span>📶 Wi-Fi: <span className="font-black">{receiptSettings.wifiSsid || "Legiy_Free_WiFi"}</span></span>
-                        {receiptSettings.wifiPass && (
-                          <span className="ml-2">Pass: <span className="font-black">{receiptSettings.wifiPass}</span></span>
-                        )}
-                      </div>
-                    )}
 
-                    {/* Quotes di Bawah */}
-                    {receiptSettings.showQuotes !== false && receiptSettings.quotesBelow && (
-                      <div className="my-2 py-1.5 px-2 border-y border-dashed border-black text-center text-[11px] font-bold italic text-black">
-                        "{receiptSettings.quotesBelow}"
-                      </div>
-                    )}
-
-                    {receiptSettings.footerText1 && (
-                      <p className="font-bold">{receiptSettings.footerText1}</p>
-                    )}
-                    {receiptSettings.footerText2 && (
-                      <p className="font-black mt-0.5 text-black tracking-wider uppercase text-[11px]">
-                        {receiptSettings.footerText2}
-                      </p>
-                    )}
-
-                    {receiptSettings.showQrCode !== false && (
-                      <div className="flex flex-col items-center justify-center mt-3 pt-3 border-t-2 border-dashed border-black">
-                        <div className="bg-white p-2 border-2 border-black rounded-lg">
-                          <QRCodeCanvas
-                            value={receiptSettings.qrCodeUrl || "https://linktr.ee/legiy_dessert"}
-                            size={84}
-                            level="M"
-                            fgColor="#000000"
-                            bgColor="#ffffff"
-                          />
-                        </div>
-                        <p className="text-[10px] font-black text-black mt-2 uppercase">Scan untuk Menu & Sosmed</p>
-                        <p className="text-[9px] text-black font-bold tracking-tight">{receiptSettings.qrCodeUrl || "linktr.ee/legiy_dessert"}</p>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
+                  <div className="pt-2 border-t border-stone-200">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingReceipt(false)}
+                      className="w-full py-2.5 bg-[#D81B60] text-white rounded-xl font-black text-xs hover:bg-[#C2185B] shadow-sm flex items-center justify-center gap-1.5"
+                    >
+                      <Sparkles size={14} />
+                      Simpan & Lihat Pratinjau Lucu
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <CuteReceipt
+                  order={lastOrderDetails}
+                  settings={receiptSettings}
+                  isPrint={false}
+                  className="w-full border-2 border-stone-900 shadow-none rounded-2xl"
+                />
+              )}
             </div>
 
             {/* Actions */}
@@ -3957,182 +3815,15 @@ export default function App() {
       `}</style>
 
       {/* PRINTABLE RECEIPT TEMPLATE FOR 80MM (HIDDEN ON SCREEN, SHOWN ONLY ON PRINT) */}
-      {receiptToPrint && (() => {
-        const printableItems = (Array.isArray(receiptToPrint.cartSnapshot) && receiptToPrint.cartSnapshot.length > 0)
-          ? receiptToPrint.cartSnapshot
-          : (Array.isArray(receiptToPrint.items) && receiptToPrint.items.length > 0)
-            ? receiptToPrint.items
-            : getCartSnapshotOrFallback(receiptToPrint, productList);
-
-        return (
-        <div id="print-receipt" className="hidden print:block absolute top-0 left-0 bg-white z-[9999] w-[80mm] text-black font-mono text-[12px] leading-snug p-[4mm]">
-          {/* Header Kop */}
-          <div className="text-center mb-1.5">
-            {receiptSettings.showLogo !== false && (
-              <div className="flex justify-center mb-1">
-                <img
-                  src={STORE_LOGO_PRINT}
-                  alt="Logo"
-                  className="w-36 h-auto object-contain mx-auto mb-1 filter contrast-200 grayscale"
-                />
-              </div>
-            )}
-            <div className="font-black text-[17px] uppercase tracking-tight text-black leading-tight">
-              {receiptSettings.storeName || "Legiy's Dessert"}
-            </div>
-            {receiptSettings.storeTagline && (
-              <div className="text-[10px] font-bold italic leading-tight mt-0.5 text-black">
-                {receiptSettings.storeTagline}
-              </div>
-            )}
-            <div className="text-[11.5px] font-bold leading-tight mt-0.5 text-black">
-              {receiptSettings.storeAddress || "Perumahan TSI, Blok O.14, Cirebon"}
-            </div>
-            <div className="text-[12px] font-black leading-tight mt-0.5 text-black">
-              {receiptSettings.storePhone || "0812-1252-7520"}
-              {receiptSettings.showInstagram !== false && receiptSettings.instagram ? ` | ${receiptSettings.instagram}` : ""}
-            </div>
-          </div>
-
-          <div className="border-b-2 border-dashed border-black my-2"></div>
-
-          {/* Order Details */}
-          <div className="space-y-0.5 text-[11.5px] text-black font-bold">
-            <div className="flex justify-between">
-              <span>No. Order :</span>
-              <span className="font-black">{receiptToPrint.orderId}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Customer   :</span>
-              <span className="font-black uppercase">{receiptToPrint.customerName || "-"}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Tanggal    :</span>
-              <span className="font-bold">
-                {new Date(receiptToPrint.timestamp).toLocaleDateString("id-ID")}{" "}
-                {new Date(receiptToPrint.timestamp).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span>Tipe Order :</span>
-              <span className="font-black uppercase">{receiptToPrint.orderType}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Metode     :</span>
-              <span className="font-black uppercase">{receiptToPrint.paymentMethod}</span>
-            </div>
-          </div>
-
-          <div className="border-b-2 border-dashed border-black my-2"></div>
-
-          {/* Item List */}
-          <div className="space-y-2 my-1 text-black">
-            {printableItems.map((item: any, idx: number) => (
-              <div key={idx} className="text-[12px]">
-                <div className="font-black leading-tight uppercase text-[12.5px] text-black">
-                  {item.name}
-                </div>
-                {item.selectedAddons && item.selectedAddons.length > 0 && (
-                  <div className="text-[10px] pl-2 font-mono text-black">
-                    {item.selectedAddons.map((a: any) => `+ ${a.optionName || a.name}${a.price ? ` (${Number(a.price).toLocaleString("id-ID")})` : ""}`).join(", ")}
-                  </div>
-                )}
-                {item.itemNotes && (
-                  <div className="text-[10px] pl-2 italic text-black">
-                    *{item.itemNotes}
-                  </div>
-                )}
-                <div className="flex justify-between text-[11.5px] pl-2 font-bold text-black">
-                  <span>{item.quantity} x {Number(item.price).toLocaleString("id-ID")}</span>
-                  <span className="font-black text-[12.5px]">{Number(item.price * item.quantity).toLocaleString("id-ID")}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="border-b-2 border-dashed border-black my-2"></div>
-
-          {/* Totals */}
-          <div className="space-y-1 text-[12px] text-black font-bold">
-            <div className="flex justify-between">
-              <span>Subtotal</span>
-              <span className="font-black">{Number(receiptToPrint.subtotal).toLocaleString("id-ID")}</span>
-            </div>
-            {receiptToPrint.discount ? (
-              <div className="flex justify-between">
-                <span>Diskon</span>
-                <span className="font-black">-{Number(receiptToPrint.discount).toLocaleString("id-ID")}</span>
-              </div>
-            ) : null}
-            {receiptToPrint.tax > 0 ? (
-              <div className="flex justify-between">
-                <span>PB1</span>
-                <span className="font-black">{Number(receiptToPrint.tax).toLocaleString("id-ID")}</span>
-              </div>
-            ) : null}
-            <div className="border-y-2 border-black py-1.5 my-1 flex justify-between font-black text-[17px] text-black">
-              <span>TOTAL</span>
-              <span>Rp {Number(receiptToPrint.total).toLocaleString("id-ID")}</span>
-            </div>
-            <div className="flex justify-between mt-1 text-[11.5px]">
-              <span>Bayar ({receiptToPrint.paymentMethod})</span>
-              <span className="font-black">{Number(receiptToPrint.cashGiven || receiptToPrint.paidAmount || receiptToPrint.total).toLocaleString("id-ID")}</span>
-            </div>
-            {receiptToPrint.paymentMethod === "Cash" && (
-              <div className="flex justify-between text-[12px]">
-                <span>Kembalian</span>
-                <span className="font-black">{Number(receiptToPrint.change || 0).toLocaleString("id-ID")}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Wi-Fi Details in Print */}
-          {receiptSettings.showWifi !== false && (receiptSettings.wifiSsid || receiptSettings.wifiPass) && (
-            <div className="border border-dashed border-black rounded-lg py-1 px-2 my-2 text-center text-[10.5px] font-bold">
-              <span>📶 Wi-Fi: <span className="font-black">{receiptSettings.wifiSsid || "Legiy_Free_WiFi"}</span></span>
-              {receiptSettings.wifiPass && (
-                <span className="ml-2">Pass: <span className="font-black">{receiptSettings.wifiPass}</span></span>
-              )}
-            </div>
-          )}
-
-          {/* Quotes below in Print */}
-          {receiptSettings.showQuotes !== false && receiptSettings.quotesBelow && (
-            <div className="my-2 py-1.5 px-2 border-y border-dashed border-black text-center text-[11px] font-bold italic text-black">
-              "{receiptSettings.quotesBelow}"
-            </div>
-          )}
-
-          <div className="border-b-2 border-dashed border-black my-2"></div>
-
-          {/* Footer Messages & QR Code */}
-          <div className="text-center space-y-1 mt-1 text-black">
-            {receiptSettings.footerText1 && (
-              <div className="font-bold text-[11.5px] leading-snug">{receiptSettings.footerText1}</div>
-            )}
-            {receiptSettings.footerText2 && (
-              <div className="font-black text-[12px] uppercase tracking-wide">{receiptSettings.footerText2}</div>
-            )}
-
-            {receiptSettings.showQrCode !== false && (
-              <div className="flex flex-col items-center justify-center mt-2.5 pt-2 border-t-2 border-dashed border-black">
-                <div className="bg-white p-1.5 border-2 border-black rounded-lg inline-block">
-                  <QRCodeCanvas
-                    value={receiptSettings.qrCodeUrl || "https://linktr.ee/legiy_dessert"}
-                    size={84}
-                    level="M"
-                    fgColor="#000000"
-                    bgColor="#ffffff"
-                  />
-                </div>
-                <div className="text-[10px] font-black mt-1.5 uppercase tracking-wide">Scan untuk Menu & Sosmed</div>
-                <div className="text-[9px] font-bold break-all">{receiptSettings.qrCodeUrl || "linktr.ee/legiy_dessert"}</div>
-              </div>
-            )}
-          </div>
-        </div>
-        );
-      })()}
+      {receiptToPrint && (
+        <CuteReceipt
+          id="print-receipt"
+          order={receiptToPrint}
+          settings={receiptSettings}
+          isPrint={true}
+          className="hidden print:block absolute top-0 left-0 bg-white z-[9999]"
+        />
+      )}
     </div>
   );
 }

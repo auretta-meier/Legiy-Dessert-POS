@@ -56,6 +56,7 @@ import {
 import ManagementFinance from "./components/ManagementFinance";
 import ManagementPerformance from "./components/ManagementPerformance";
 import AddonSelectionModal from "./components/AddonSelectionModal";
+import ManagementHistory from "./components/ManagementHistory";
 import {
   subscribeToProducts,
   subscribeToCategories,
@@ -775,131 +776,6 @@ function ManagementMenu({
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function ManagementHistory({
-  orderHistory,
-  printReceipt,
-  setOrderHistory,
-  queueSync,
-}: {
-  orderHistory: any[];
-  printReceipt: (order?: any) => void;
-  setOrderHistory: any;
-  queueSync: any;
-}) {
-  const sortedOrderHistory = useMemo(() => {
-    const list = Array.isArray(orderHistory) ? orderHistory : [];
-    return [...list].sort((a, b) => {
-      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-      return timeB - timeA;
-    });
-  }, [orderHistory]);
-
-  return (
-    <div className="p-6 h-full flex flex-col">
-      <div className="flex items-center mb-6">
-        <h3 className="text-lg font-bold text-stone-800">
-          Order History ({sortedOrderHistory.length})
-        </h3>
-      </div>
-      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-        {sortedOrderHistory.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-stone-300">
-            <History size={48} className="opacity-20 mb-3" />
-            <p className="text-sm font-bold text-stone-400">
-              Belum ada transaksi selesai.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[650px]">
-              <thead>
-                <tr className="border-b border-stone-200 text-stone-500 text-xs uppercase tracking-widest">
-                  <th className="pb-3 font-bold">Order ID</th>
-                  <th className="pb-3 font-bold">Date & Time</th>
-                  <th className="pb-3 font-bold">Customer</th>
-                  <th className="pb-3 font-bold">Type</th>
-                  <th className="pb-3 font-bold">Payment</th>
-                  <th className="pb-3 font-bold text-right">Total Amount</th>
-                  <th className="pb-3 font-bold text-center">Receipt</th>
-                  <th className="pb-3 font-bold text-center">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedOrderHistory.map((o, idx) => {
-                  const displayTotal = typeof o.total === 'number' ? o.total : parseIndonesianNumber(o.total);
-                  return (
-                    <tr
-                      key={`${o.orderId}-${idx}`}
-                      className="border-b border-stone-100 hover:bg-stone-50 transition-colors group"
-                    >
-                      <td className="py-4 text-sm font-mono font-bold text-stone-800">
-                        {o.orderId}
-                      </td>
-                      <td className="py-4 text-xs font-semibold text-stone-500">
-                        {new Date(o.timestamp).toLocaleDateString("id-ID")}{" "}
-                        <span className="text-stone-400 ml-1">
-                          {new Date(o.timestamp).toLocaleTimeString("id-ID", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </span>
-                      </td>
-                      <td className="py-4 text-xs font-bold text-stone-800">
-                        {o.customerName || "-"}
-                      </td>
-                      <td className="py-4 text-xs font-bold text-stone-600">
-                        <span
-                          className={`px-2 py-1 rounded-md ${o.orderType === "Dine-in" ? "bg-blue-50 text-blue-700" : "bg-orange-50 text-orange-700"}`}
-                        >
-                          {o.orderType}
-                        </span>
-                      </td>
-                      <td className="py-4 text-xs font-bold text-stone-600">
-                        {o.paymentMethod}
-                      </td>
-                      <td className="py-4 text-sm font-mono font-bold text-[#D81B60] text-right">
-                        {formatRupiah(displayTotal)}
-                      </td>
-                      <td className="py-4 text-center">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            printReceipt(o);
-                          }}
-                          title="Print Receipt"
-                          className="p-2 text-stone-400 hover:text-[#D81B60] hover:bg-stone-50 rounded-lg transition-colors inline-block"
-                        >
-                          <Printer size={16} />
-                        </button>
-                      </td>
-                      <td className="py-4 text-center">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (confirm(`Yakin ingin menghapus Order ${o.orderId}?`)) {
-                              setOrderHistory((prev: any[]) => prev.filter((x) => x.orderId !== o.orderId));
-                              queueSync("ORDER", "DELETE", { orderId: o.orderId });
-                            }
-                          }}
-                          title="Hapus Order"
-                          className="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100 inline-block"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
@@ -2490,6 +2366,8 @@ export default function App() {
       cashGiven: paymentMethod === "Cash" ? cashGiven : total,
       change: paymentMethod === "Cash" ? change : 0,
       cartSnapshot: [...cart],
+      orderStatus: "Proses",
+      paymentStatus: "LUNAS",
     };
 
     // Sync to Firestore & Sheets
@@ -2608,6 +2486,51 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {/* Sub Menu Bar directly below Header for Management Mode */}
+      {viewMode === "MANAGEMENT" && (
+        <div className="bg-white border-b border-stone-200 px-3 sm:px-6 lg:px-8 py-2 shrink-0 flex items-center justify-between gap-3 overflow-x-auto custom-scrollbar z-10 print:hidden shadow-xs">
+          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto custom-scrollbar py-0.5">
+            {(
+              [
+                "MENU",
+                "HISTORY",
+                "FINANCE",
+                "PRE_ORDER",
+                "EXPENSE",
+                "COGS",
+                "PERFORMANCE",
+                "SETTINGS",
+              ] as ManagementTab[]
+            ).map((tab) => {
+              const labelMap: Record<ManagementTab, string> = {
+                MENU: "Menu & Kategori",
+                HISTORY: "Riwayat Transaksi",
+                FINANCE: "Laporan Keuangan",
+                PRE_ORDER: "Pre-Order",
+                EXPENSE: "Pengeluaran",
+                COGS: "HPP / COGS",
+                PERFORMANCE: "Performa Kasir",
+                SETTINGS: "Pengaturan Cloud",
+              };
+              const isActive = managementTab === tab;
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setManagementTab(tab)}
+                  className={`px-3 sm:px-4 py-1.5 rounded-xl text-xs font-black transition-all whitespace-nowrap border select-none ${
+                    isActive
+                      ? "bg-[#D81B60] text-white border-[#D81B60] shadow-xs"
+                      : "bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100 hover:text-stone-900"
+                  }`}
+                >
+                  {labelMap[tab]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {viewMode === "POS" ? (
         <main className="flex-1 flex overflow-hidden p-2.5 sm:p-4 lg:p-5 gap-3.5 sm:gap-4 max-w-7xl mx-auto w-full">
@@ -2927,46 +2850,19 @@ export default function App() {
           </aside>
         </main>
       ) : (
-        <main className="flex-1 flex overflow-hidden bg-stone-50 p-4 sm:p-6 pb-0">
-          <div className="max-w-6xl mx-auto w-full flex flex-col gap-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
-              <div>
-                <h2 className="text-2xl sm:text-3xl font-black text-stone-950">
-                  Management <span className="text-[#D81B60]">Dashboard</span>
-                </h2>
-                <p className="text-xs text-stone-800 font-black tracking-wider mt-1 uppercase">
-                  Monitor business performance & inventory
-                </p>
-              </div>
-              <div className="flex bg-stone-100 rounded-2xl shadow-xs border-2 border-stone-300 p-1 w-full sm:w-fit overflow-x-auto custom-scrollbar">
-                {(
-                  [
-                    "MENU",
-                    "HISTORY",
-                    "FINANCE",
-                    "PRE_ORDER",
-                    "EXPENSE",
-                    "COGS",
-                    "PERFORMANCE",
-                    "SETTINGS",
-                  ] as ManagementTab[]
-                ).map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setManagementTab(tab)}
-                    className={`flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap ${
-                      managementTab === tab 
-                        ? "bg-[#D81B60] text-white shadow-sm" 
-                        : "text-stone-900 hover:text-black hover:bg-stone-200"
-                    }`}
-                  >
-                    {tab.replace("_", " ")}
-                  </button>
-                ))}
-              </div>
+        <main className={`flex-1 min-h-0 overflow-y-auto ${managementTab === "HISTORY" ? "bg-[#F3F6F9]" : "bg-stone-100/70 p-2 sm:p-4 flex"}`}>
+          {managementTab === "HISTORY" ? (
+            <div className="w-full min-h-full">
+              <ManagementHistory 
+                orderHistory={orderHistory} 
+                printReceipt={printReceipt} 
+                setOrderHistory={setOrderHistory}
+                queueSync={queueSync}
+                productList={productList}
+              />
             </div>
-
-            <div className="flex-1 bg-white rounded-t-3xl shadow-sm border-2 border-b-0 border-stone-200 overflow-hidden flex flex-col print:hidden">
+          ) : (
+            <div className="flex-1 w-full bg-white rounded-2xl shadow-xs border border-stone-200 overflow-hidden flex flex-col print:hidden">
               {managementTab === "MENU" && (
                 <ManagementMenu
                   productList={productList}
@@ -2976,20 +2872,13 @@ export default function App() {
                   queueSync={queueSync}
                 />
               )}
-              {managementTab === "HISTORY" && (
-                <ManagementHistory 
-                  orderHistory={orderHistory} 
-                  printReceipt={printReceipt} 
-                  setOrderHistory={setOrderHistory}
-                  queueSync={queueSync}
-                />
-              )}
               {managementTab === "FINANCE" && (
                 <ManagementFinance
                   orderHistory={orderHistory}
                   expenses={expenses}
                   setExpenses={setExpenses}
                   productList={productList}
+                  queueSync={queueSync}
                 />
               )}
               {managementTab === "PRE_ORDER" && (
@@ -3031,7 +2920,7 @@ export default function App() {
                 />
               )}
             </div>
-          </div>
+          )}
         </main>
       )}
 

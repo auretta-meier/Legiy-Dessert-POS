@@ -78,6 +78,7 @@ export default function ManagementFinance({
   const filteredOrders = useMemo(() => {
     return parsedOrders.filter((o) => {
       if (!o || !o.timestamp) return false;
+      if (o.orderStatus === "Cancel" || o.orderStatus === "Batal") return false;
       const date = new Date(o.timestamp);
       if (isNaN(date.getTime())) return false;
       const now = new Date();
@@ -123,6 +124,22 @@ export default function ManagementFinance({
   const totalRevenue = useMemo(
     () => filteredOrders.reduce((acc, o) => acc + (o.total || 0), 0),
     [filteredOrders]
+  );
+
+  // All-time overall revenue across entire database (excluding cancelled)
+  const allTimeRevenue = useMemo(
+    () =>
+      parsedOrders
+        .filter((o) => o.orderStatus !== "Cancel" && o.orderStatus !== "Batal")
+        .reduce((acc, o) => acc + (o.total || 0), 0),
+    [parsedOrders]
+  );
+
+  const allTimeOrdersCount = useMemo(
+    () =>
+      parsedOrders.filter((o) => o.orderStatus !== "Cancel" && o.orderStatus !== "Batal")
+        .length,
+    [parsedOrders]
   );
 
   const totalCOGS = useMemo(() => {
@@ -376,23 +393,32 @@ export default function ManagementFinance({
       {/* 1. FINANCIAL SUMMARY KPI CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Revenue */}
-        <div className="bg-gradient-to-br from-emerald-50 to-teal-50/50 p-4 rounded-3xl border-2 border-emerald-200 shadow-xs relative overflow-hidden">
-          <div className="flex justify-between items-start mb-2">
-            <span className="text-[11px] font-black text-emerald-800 uppercase tracking-wider">
-              Total Pemasukan (Omzet)
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-xs">
-              <TrendingUp size={16} strokeWidth={2.5} />
+        <div className="bg-gradient-to-br from-emerald-50 to-teal-50/50 p-4 rounded-3xl border-2 border-emerald-200 shadow-xs relative overflow-hidden flex flex-col justify-between">
+          <div>
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-[11px] font-black text-emerald-800 uppercase tracking-wider">
+                Total Pemasukan {filter === "DAILY" ? "(Hari Ini)" : filter === "THIS_MONTH" ? "(Bulan Ini)" : filter === "CUSTOM" ? "(Kustom)" : "(Semua Waktu)"}
+              </span>
+              <div className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-xs">
+                <TrendingUp size={16} strokeWidth={2.5} />
+              </div>
+            </div>
+            <div className="text-2xl font-black text-emerald-700 tracking-tight">
+              {formatRupiah(totalRevenue)}
+            </div>
+            <div className="text-[11px] font-bold text-emerald-800 mt-2 flex items-center gap-1">
+              <span>{orderCount} Transaksi</span>
+              <span>•</span>
+              <span>Rata-rata: {formatRupiah(averageOrderValue)}</span>
             </div>
           </div>
-          <div className="text-2xl font-black text-emerald-700 tracking-tight">
-            {formatRupiah(totalRevenue)}
-          </div>
-          <div className="text-[11px] font-bold text-emerald-800 mt-2 flex items-center gap-1">
-            <span>{orderCount} Transaksi</span>
-            <span>•</span>
-            <span>Rata-rata: {formatRupiah(averageOrderValue)}</span>
-          </div>
+
+          {filter !== "ALL" && (
+            <div className="text-[10px] text-emerald-950 font-bold pt-2 border-t border-emerald-200/80 mt-2 flex items-center justify-between">
+              <span>Total Keseluruhan:</span>
+              <span className="font-mono font-black text-emerald-900">{formatRupiah(allTimeRevenue)}</span>
+            </div>
+          )}
         </div>
 
         {/* COGS (HPP) */}

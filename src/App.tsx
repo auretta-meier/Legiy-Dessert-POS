@@ -40,6 +40,7 @@ import {
   ExternalLink,
   HelpCircle,
   Radio,
+  ChefHat,
 } from "lucide-react";
 import {
   products,
@@ -77,6 +78,7 @@ import {
 import { QRCodeCanvas } from "qrcode.react";
 import { STORE_LOGO, STORE_LOGO_PRINT } from "./logo";
 import CuteReceipt, { CUTE_FRAME_PRESETS, ReceiptFrameStyle } from "./components/CuteReceipt";
+import StaffReceipt from "./components/StaffReceipt";
 
 export const DESSERT_QUOTES_PRESETS = [
   "Manisnya pas, bikin harimu lebih ceria!",
@@ -114,6 +116,7 @@ export const DEFAULT_RECEIPT_SETTINGS = {
   showHappinessMeter: true,
   cuteHeaderMotto: "* SWEET DESSERT CAFE *",
   cuteGreetingText: "Customer Tersayang :",
+  printStaffReceipt: true,
 };
 
 function useLocalStorage<T>(key: string, initialValue: T) {
@@ -1986,32 +1989,81 @@ export default function App() {
   
   const [receiptSettings, setReceiptSettings] = useLocalStorage("legiy_receipt_settings", DEFAULT_RECEIPT_SETTINGS);
 
-  const [receiptToPrint, setReceiptToPrint] = useState<any>(null);
+  // Staff Receipt & Multi-Job Print Queue (Separate Print Dialogs for Hardware Autocut)
+  const [printStaffReceipt, setPrintStaffReceipt] = useLocalStorage<boolean>("legiy_print_staff_receipt", true);
+  const [activePrintJob, setActivePrintJob] = useState<{ order: any; type: "NORMAL" | "STAFF" } | null>(null);
+  const [printQueue, setPrintQueue] = useState<{ order: any; type: "NORMAL" | "STAFF" }[]>([]);
+  const [printStatusNotification, setPrintStatusNotification] = useState<string | null>(null);
+  const [receiptPreviewTab, setReceiptPreviewTab] = useState<"NORMAL" | "STAFF">("NORMAL");
   const [isEditingReceipt, setIsEditingReceipt] = useState(false);
 
+  // Sequential Print Execution: triggers two separate window.print() dialogs when both receipts are requested,
+  // allowing thermal printers to autocut the paper after each receipt!
   useEffect(() => {
-    if (receiptToPrint) {
-      // Create an afterprint handler to reset receiptToPrint after printing is complete or canceled
-      const handleAfterPrint = () => {
-        setReceiptToPrint(null);
-      };
-      
-      window.addEventListener("afterprint", handleAfterPrint);
-
-      const timer = setTimeout(() => {
-        window.print();
-        // Fallback cleanup in case afterprint does not fire or is delayed in some custom webviews / browsers
-        setTimeout(() => {
-          setReceiptToPrint(null);
-        }, 3000);
-      }, 500);
-
-      return () => {
-        clearTimeout(timer);
-        window.removeEventListener("afterprint", handleAfterPrint);
-      };
+    if (!activePrintJob) {
+      setPrintStatusNotification(null);
+      return;
     }
-  }, [receiptToPrint]);
+
+    const isStaff = activePrintJob.type === "STAFF";
+    const jobLabel = isStaff ? "Nota Staff / Dapur" : "Nota Normal Pelanggan";
+
+    setPrintStatusNotification(
+      `Membuka dialog printer: ${jobLabel}... Klik "Cetak" untuk memotong kertas.`
+    );
+
+    let isDisposed = false;
+
+    const handlePrintCompletion = () => {
+      if (isDisposed) return;
+      isDisposed = true;
+
+      setPrintQueue((currentQueue) => {
+        if (currentQueue.length > 0) {
+          const nextJob = currentQueue[0];
+          const remaining = currentQueue.slice(1);
+
+          setPrintStatusNotification(
+            `Nota pertama selesai terpotong! Menyiapkan ${
+              nextJob.type === "STAFF" ? "Nota Staff / Dapur" : "Nota Normal"
+            }...`
+          );
+
+          // Clear active job to cleanly unmount current receipt before mounting next
+          setActivePrintJob(null);
+
+          // 600ms pause so browser and printer spooler cleanly close first dialog before opening next
+          setTimeout(() => {
+            setActivePrintJob(nextJob);
+          }, 600);
+
+          return remaining;
+        } else {
+          setActivePrintJob(null);
+          setPrintStatusNotification(null);
+          return [];
+        }
+      });
+    };
+
+    window.addEventListener("afterprint", handlePrintCompletion);
+
+    // Give DOM 450ms to mount and lay out the receipt element before triggering print dialog
+    const printTimer = setTimeout(() => {
+      try {
+        window.print();
+      } catch (err) {
+        console.error("Print execution failed:", err);
+        handlePrintCompletion();
+      }
+    }, 450);
+
+    return () => {
+      isDisposed = true;
+      clearTimeout(printTimer);
+      window.removeEventListener("afterprint", handlePrintCompletion);
+    };
+  }, [activePrintJob]);
 
   const [isFirebaseConnected, setIsFirebaseConnected] = useState(true);
   const [isMigrating, setIsMigrating] = useState(false);
@@ -2061,15 +2113,22 @@ export default function App() {
     const unsubCategories = subscribeToCategories((items) => {
       if (!isMounted) return;
       if (items && items.length > 0) {
-        const merged = Array.from(new Set([...initialCategories, ...items]));
-        setCategories(merged);
+        setCategories(items);
+      } else {
+        setCategories(initialCategories);
       }
     });
 
     const unsubOrders = subscribeToOrders((items) => {
       if (!isMounted) return;
-      if (items) {
-        setOrderHistory(items);
+      if (items && items.length > 0) {
+        setOrderHistory((prevOrders: any[]) => {
+          const cloudIds = new Set(items.map((it: any) => String(it.orderId || it.id)));
+          const pendingLocal = (Array.isArray(prevOrders) ? prevOrders : []).filter(
+            (localOrd: any) => localOrd?.orderId && !cloudIds.has(String(localOrd.orderId))
+          );
+          return [...pendingLocal, ...items];
+        });
       }
     });
 
@@ -2205,7 +2264,7 @@ export default function App() {
       { name: "Pistachio Crepe Cake", price: 38000, quantity: 1 },
       { name: "Iced Caramel Macchiato", price: 25000, quantity: 2 },
     ];
-    setReceiptToPrint({
+    printReceipt({
       orderId: "TEST-" + Math.floor(100000 + Math.random() * 900000),
       timestamp: new Date().toISOString(),
       customerName: "Kak Amanda (Uji Coba)",
@@ -2383,15 +2442,42 @@ export default function App() {
     setCustomerName("");
   };
 
-  // Receipt Printing
-  const printReceipt = (eventOrOrder?: any) => {
+  // Receipt Printing (Supports Normal Only, Staff Only, or Both with Autocut Separation)
+  const printReceipt = (
+    eventOrOrder?: any,
+    options?: { mode?: "DEFAULT" | "BOTH" | "NORMAL_ONLY" | "STAFF_ONLY" }
+  ) => {
     // If it's a React Event (e.g. from the checkout modal onClick), we ignore it and use lastOrderDetails
     // If it's an order object from the history, it will have an orderId
     const orderToPrint =
       eventOrOrder && eventOrOrder.orderId ? eventOrOrder : lastOrderDetails;
     if (!orderToPrint) return;
 
-    setReceiptToPrint(orderToPrint);
+    const mode = options?.mode || "DEFAULT";
+    let jobs: { order: any; type: "NORMAL" | "STAFF" }[] = [];
+
+    if (mode === "STAFF_ONLY") {
+      jobs = [{ order: orderToPrint, type: "STAFF" }];
+    } else if (mode === "NORMAL_ONLY") {
+      jobs = [{ order: orderToPrint, type: "NORMAL" }];
+    } else if (mode === "BOTH") {
+      jobs = [
+        { order: orderToPrint, type: "NORMAL" },
+        { order: orderToPrint, type: "STAFF" },
+      ];
+    } else {
+      // DEFAULT: check printStaffReceipt toggle
+      jobs = [{ order: orderToPrint, type: "NORMAL" }];
+      if (printStaffReceipt) {
+        jobs.push({ order: orderToPrint, type: "STAFF" });
+      }
+    }
+
+    if (jobs.length === 0) return;
+
+    const [firstJob, ...remainingJobs] = jobs;
+    setPrintQueue(remainingJobs);
+    setActivePrintJob(firstJob);
   };
 
   // Render Header
@@ -2538,26 +2624,50 @@ export default function App() {
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
             {/* Top Toolbar: Search & Category Navigation */}
             <div className="mb-3 space-y-2.5 shrink-0">
-              {/* Search Bar */}
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Cari nama menu atau kategori dessert..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-white text-stone-900 text-xs sm:text-sm font-medium pl-10 pr-10 py-2.5 sm:py-3 rounded-2xl shadow-xs border border-stone-200/80 outline-none focus:border-[#D45D79] focus:ring-2 focus:ring-rose-100 transition-all placeholder:text-stone-400"
-                />
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400">
-                  <Search size={16} strokeWidth={2.5} />
-                </span>
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-[11px] text-stone-500 hover:text-stone-900 px-2 py-0.5 rounded-md bg-stone-100 hover:bg-stone-200 transition-colors"
+              {/* Search Bar & Quick Staff Print Toggle */}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    placeholder="Cari nama menu atau kategori dessert..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-white text-stone-900 text-xs sm:text-sm font-medium pl-10 pr-10 py-2.5 sm:py-3 rounded-2xl shadow-xs border border-stone-200/80 outline-none focus:border-[#D45D79] focus:ring-2 focus:ring-rose-100 transition-all placeholder:text-stone-400"
+                  />
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400">
+                    <Search size={16} strokeWidth={2.5} />
+                  </span>
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-[11px] text-stone-500 hover:text-stone-900 px-2 py-0.5 rounded-md bg-stone-100 hover:bg-stone-200 transition-colors"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+
+                {/* Quick Staff Receipt Toggle Button in Cashier Toolbar */}
+                <button
+                  type="button"
+                  onClick={() => setPrintStaffReceipt(!printStaffReceipt)}
+                  className={`hidden sm:flex items-center gap-2 px-3.5 py-2.5 sm:py-3 rounded-2xl text-xs font-black border transition-all shrink-0 select-none shadow-xs ${
+                    printStaffReceipt
+                      ? "bg-emerald-50 text-emerald-950 border-emerald-300 hover:bg-emerald-100/80"
+                      : "bg-white text-stone-600 border-stone-200 hover:bg-stone-50"
+                  }`}
+                  title="Klik untuk mengubah apakah Nota Staff/Dapur dicetak terpisah (autocut) atau tidak"
+                >
+                  <ChefHat size={16} className={printStaffReceipt ? "text-emerald-600" : "text-stone-400"} />
+                  <span className="hidden md:inline">Nota Staff:</span>
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider ${
+                      printStaffReceipt ? "bg-emerald-600 text-white shadow-2xs" : "bg-stone-200 text-stone-600"
+                    }`}
                   >
-                    Reset
-                  </button>
-                )}
+                    {printStaffReceipt ? "2x Print" : "1x Print"}
+                  </span>
+                </button>
               </div>
 
               {/* Category Pills (Horizontal Scrolling - Clean on Mobile, iPad, and Desktop) */}
@@ -2713,6 +2823,34 @@ export default function App() {
                     </button>
                   ))}
                 </div>
+
+                {/* Staff Receipt Print Toggle for Cashier */}
+                <div className="mt-2.5 pt-2 border-t border-stone-200/70">
+                  <button
+                    type="button"
+                    onClick={() => setPrintStaffReceipt(!printStaffReceipt)}
+                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                      printStaffReceipt
+                        ? "bg-emerald-50/90 border-emerald-300 text-emerald-950 hover:bg-emerald-100/70"
+                        : "bg-stone-100/90 border-stone-200 text-stone-500 hover:bg-stone-200/60"
+                    }`}
+                    title="Aktifkan untuk mencetak 2 nota sekaligus (Nota Pelanggan + Nota Staff/Dapur) dengan potongan autocut terpisah"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <ChefHat size={14} className={printStaffReceipt ? "text-emerald-600" : "text-stone-400"} />
+                      <span className="text-[11.5px]">Nota Staff (Dapur)</span>
+                    </div>
+                    <span
+                      className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                        printStaffReceipt
+                          ? "bg-emerald-600 text-white shadow-2xs"
+                          : "bg-stone-300 text-stone-600"
+                      }`}
+                    >
+                      {printStaffReceipt ? "2x Print" : "1x Print"}
+                    </span>
+                  </button>
+                </div>
               </div>
 
               {/* Order Items List */}
@@ -2859,6 +2997,7 @@ export default function App() {
                 setOrderHistory={setOrderHistory}
                 queueSync={queueSync}
                 productList={productList}
+                printStaffReceipt={printStaffReceipt}
               />
             </div>
           ) : (
@@ -3023,6 +3162,31 @@ export default function App() {
                     {type}
                   </button>
                 ))}
+              </div>
+
+              {/* Mobile Staff Receipt Toggle */}
+              <div className="pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setPrintStaffReceipt(!printStaffReceipt)}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                    printStaffReceipt
+                      ? "bg-emerald-50/90 border-emerald-300 text-emerald-950"
+                      : "bg-stone-100/90 border-stone-200 text-stone-500"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <ChefHat size={14} className={printStaffReceipt ? "text-emerald-600" : "text-stone-400"} />
+                    <span className="text-[11px]">Cetak Nota Staff (Dapur)</span>
+                  </div>
+                  <span
+                    className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                      printStaffReceipt ? "bg-emerald-600 text-white" : "bg-stone-300 text-stone-600"
+                    }`}
+                  >
+                    {printStaffReceipt ? "2x Print" : "1x Print"}
+                  </span>
+                </button>
               </div>
             </div>
 
@@ -3493,24 +3657,108 @@ export default function App() {
                   </div>
                 </div>
               ) : (
-                <CuteReceipt
-                  order={lastOrderDetails}
-                  settings={receiptSettings}
-                  isPrint={false}
-                  className="w-full border-2 border-stone-900 shadow-none rounded-2xl"
-                />
+                <div className="space-y-3">
+                  {/* Receipt Preview Mode Switcher */}
+                  <div className="flex p-1 bg-stone-100 rounded-xl border border-stone-200 print:hidden">
+                    <button
+                      type="button"
+                      onClick={() => setReceiptPreviewTab("NORMAL")}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                        receiptPreviewTab === "NORMAL"
+                          ? "bg-white text-stone-900 shadow-xs"
+                          : "text-stone-500 hover:text-stone-800"
+                      }`}
+                    >
+                      <Receipt size={13} />
+                      <span>Nota Normal</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReceiptPreviewTab("STAFF")}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                        receiptPreviewTab === "STAFF"
+                          ? "bg-white text-stone-900 shadow-xs"
+                          : "text-stone-500 hover:text-stone-800"
+                      }`}
+                    >
+                      <ChefHat size={13} className="text-amber-600" />
+                      <span>Nota Staff (Dapur)</span>
+                    </button>
+                  </div>
+
+                  {receiptPreviewTab === "STAFF" ? (
+                    <div>
+                      <div className="text-[10px] text-stone-500 font-bold mb-1.5 text-center bg-amber-50 p-1.5 rounded-lg border border-amber-200 text-amber-900">
+                        ⚡ Format Khusus Dapur: Super hemat kertas, hanya nama customer, no. order, waktu & detail pesanan tanpa harga.
+                      </div>
+                      <StaffReceipt
+                        order={lastOrderDetails}
+                        isPrint={false}
+                        className="w-full border-2 border-stone-900 shadow-none rounded-2xl"
+                      />
+                    </div>
+                  ) : (
+                    <CuteReceipt
+                      order={lastOrderDetails}
+                      settings={receiptSettings}
+                      isPrint={false}
+                      className="w-full border-2 border-stone-900 shadow-none rounded-2xl"
+                    />
+                  )}
+                </div>
               )}
             </div>
 
             {/* Actions */}
             <div className="p-4 bg-stone-100 border-t-2 border-stone-900 flex flex-col gap-2.5 print:hidden">
-              <button
-                onClick={() => setIsEditingReceipt(!isEditingReceipt)}
-                className={`w-full py-2.5 px-3 rounded-xl font-black text-xs flex justify-center items-center transition-all border ${isEditingReceipt ? "bg-stone-900 text-white border-transparent" : "bg-white text-stone-900 border-stone-400 hover:bg-stone-50 shadow-sm"}`}
-              >
-                <Settings size={14} className="mr-1.5" />
-                {isEditingReceipt ? "Simpan Perubahan Struk" : "Edit Teks Struk (Alamat/Nama/Daftar)"}
-              </button>
+              {/* Staff Receipt Toggle Box inside Checkout Modal */}
+              <div className="bg-white p-2.5 rounded-xl border border-stone-300 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                    printStaffReceipt ? "bg-emerald-100 text-emerald-800" : "bg-stone-100 text-stone-400"
+                  }`}>
+                    <ChefHat size={16} />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-xs font-black text-stone-900 leading-tight">
+                      Cetak Nota Staff (Dapur)
+                    </p>
+                    <p className="text-[10px] text-stone-500">
+                      {printStaffReceipt ? "Autocut memotong kedua nota terpisah" : "Hanya cetak nota normal"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPrintStaffReceipt(!printStaffReceipt)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
+                    printStaffReceipt
+                      ? "bg-emerald-600 text-white shadow-xs"
+                      : "bg-stone-200 text-stone-600 hover:bg-stone-300"
+                  }`}
+                >
+                  {printStaffReceipt ? "AKTIF (2x)" : "NONAKTIF"}
+                </button>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setIsEditingReceipt(!isEditingReceipt)}
+                  className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs flex justify-center items-center transition-all border ${isEditingReceipt ? "bg-stone-900 text-white border-transparent" : "bg-white text-stone-800 border-stone-300 hover:bg-stone-50 shadow-xs"}`}
+                >
+                  <Settings size={13} className="mr-1.5" />
+                  {isEditingReceipt ? "Simpan Struk" : "Kustom Teks Struk"}
+                </button>
+
+                <button
+                  onClick={() => printReceipt(undefined, { mode: "STAFF_ONLY" })}
+                  className="py-2 px-3 rounded-xl font-bold bg-white text-stone-800 border border-stone-300 hover:bg-stone-50 text-xs flex justify-center items-center gap-1 shadow-xs"
+                  title="Cetak hanya nota ringkas untuk staff/dapur"
+                >
+                  <ChefHat size={13} className="text-amber-600" />
+                  Staff Saja
+                </button>
+              </div>
 
               <div className="flex gap-2 w-full">
                 <button
@@ -3519,15 +3767,23 @@ export default function App() {
                     setIsCheckoutModalOpen(false);
                     setIsEditingReceipt(false);
                   }}
-                  className="flex-1 py-3 px-4 rounded-xl font-black text-stone-700 bg-white border border-stone-300 hover:bg-stone-50 shadow-sm text-center text-xs transition-colors"
+                  className="w-28 py-3 px-3 rounded-xl font-black text-stone-700 bg-white border border-stone-300 hover:bg-stone-50 shadow-xs text-center text-xs transition-colors"
                 >
-                  Selesai (Done)
+                  Selesai
                 </button>
                 <button
-                  onClick={printReceipt}
-                  className="flex-1 py-3 px-4 rounded-xl font-black bg-stone-950 text-white hover:bg-black active:scale-95 shadow-lg flex justify-center items-center text-xs transition-all border border-black"
+                  onClick={() => printReceipt()}
+                  className="flex-1 py-3 px-3 rounded-xl font-black bg-stone-950 text-white hover:bg-black active:scale-95 shadow-lg flex flex-col justify-center items-center text-xs transition-all border border-black"
                 >
-                  <Printer size={14} className="mr-1.5" /> Cetak Struk 80mm
+                  <span className="flex items-center gap-1.5">
+                    <Printer size={14} />
+                    {printStaffReceipt ? "Cetak 2 Nota (Normal + Staff)" : "Cetak Nota Normal (80mm)"}
+                  </span>
+                  {printStaffReceipt && (
+                    <span className="text-[9.5px] text-stone-300 font-normal">
+                      2 dialog cetak terpisah untuk autocut
+                    </span>
+                  )}
                 </button>
               </div>
             </div>
@@ -3604,8 +3860,11 @@ export default function App() {
                 <div className="flex justify-between py-1">
                   <span className="text-stone-500 font-medium">Data Tersinkron</span>
                   <span className="font-mono font-bold text-stone-900">
-                    {productList.length} Menu • {orderHistory.length} Nota
+                    {productList.length} Menu • {categories.length} Kategori • {orderHistory.length} Transaksi
                   </span>
+                </div>
+                <div className="pt-2 border-t border-stone-200/60 text-[11px] text-stone-600 leading-relaxed">
+                  ✓ Riwayat Order, Pengaturan Nota, Kustomisasi Menu & Add-ons, dan Pengeluaran telah tersimpan dan tersinkron otomatis penuh di database Firebase Firestore.
                 </div>
               </div>
 
@@ -3716,15 +3975,44 @@ export default function App() {
         }
       `}</style>
 
+      {/* Floating Printing Status Notification Banner during Multi-Job Autocut Print */}
+      {printStatusNotification && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[10000] bg-stone-950 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-stone-700 animate-in fade-in slide-in-from-top-3 print:hidden max-w-md w-[92%]">
+          <Printer className="w-5 h-5 text-rose-400 shrink-0 animate-pulse" />
+          <div className="flex-1 text-xs font-bold leading-snug">
+            {printStatusNotification}
+          </div>
+          <button
+            onClick={() => {
+              setActivePrintJob(null);
+              setPrintQueue([]);
+              setPrintStatusNotification(null);
+            }}
+            className="text-[10.5px] bg-stone-800 hover:bg-stone-700 px-2.5 py-1 rounded-lg text-stone-300 font-bold shrink-0 transition-colors"
+          >
+            Tutup
+          </button>
+        </div>
+      )}
+
       {/* PRINTABLE RECEIPT TEMPLATE FOR 80MM (HIDDEN ON SCREEN, SHOWN ONLY ON PRINT) */}
-      {receiptToPrint && (
-        <CuteReceipt
-          id="print-receipt"
-          order={receiptToPrint}
-          settings={receiptSettings}
-          isPrint={true}
-          className="hidden print:block absolute top-0 left-0 bg-white z-[9999]"
-        />
+      {activePrintJob && (
+        activePrintJob.type === "NORMAL" ? (
+          <CuteReceipt
+            id="print-receipt"
+            order={activePrintJob.order}
+            settings={receiptSettings}
+            isPrint={true}
+            className="hidden print:block absolute top-0 left-0 bg-white z-[9999]"
+          />
+        ) : (
+          <StaffReceipt
+            id="print-receipt"
+            order={activePrintJob.order}
+            isPrint={true}
+            className="hidden print:block absolute top-0 left-0 bg-white z-[9999]"
+          />
+        )
       )}
     </div>
   );

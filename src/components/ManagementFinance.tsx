@@ -39,6 +39,33 @@ const CATEGORY_COLORS = [
   "#64748B", // Slate
 ];
 
+export const parseOrderAmount = (val: any): number => {
+  if (typeof val === "number") return isNaN(val) ? 0 : val;
+  if (!val) return 0;
+  let str = String(val).trim().replace(/^Rp\.?\s*/i, "");
+  if (str.includes(".") && !str.includes(",")) {
+    const parts = str.split(".");
+    if (parts.slice(1).every((p) => p.length === 3)) {
+      str = str.replace(/\./g, "");
+    }
+  } else if (str.includes(",") && str.includes(".")) {
+    if (str.indexOf(".") < str.indexOf(",")) {
+      str = str.replace(/\./g, "").replace(/,/g, ".");
+    } else {
+      str = str.replace(/,/g, "");
+    }
+  } else if (str.includes(",")) {
+    const parts = str.split(",");
+    if (parts.slice(1).every((p) => p.length === 3)) {
+      str = str.replace(/,/g, "");
+    } else {
+      str = str.replace(/,/g, ".");
+    }
+  }
+  const parsed = parseFloat(str);
+  return isNaN(parsed) ? 0 : parsed;
+};
+
 export default function ManagementFinance({
   orderHistory,
   expenses,
@@ -46,7 +73,8 @@ export default function ManagementFinance({
   productList,
   queueSync,
 }: ManagementFinanceProps) {
-  const [filter, setFilter] = useState<"DAILY" | "THIS_MONTH" | "ALL" | "CUSTOM">("THIS_MONTH");
+  // Default filter to "ALL" so it immediately aligns with Riwayat Transaksi (All-Time)
+  const [filter, setFilter] = useState<"DAILY" | "THIS_MONTH" | "ALL" | "CUSTOM">("ALL");
   const [customStart, setCustomStart] = useState(
     new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
   );
@@ -58,12 +86,20 @@ export default function ManagementFinance({
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [expenseForm, setExpenseForm] = useState({ desc: "", amount: "" });
 
-  // Parse orders safely
+  // Safe local date formatting helper to avoid UTC timezone day shifts
+  const getLocalDateStr = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
+  // Parse orders safely with robust numeric handling
   const parsedOrders = useMemo(() => {
     return (Array.isArray(orderHistory) ? orderHistory : []).map((o) => {
-      const totalNum = Number(o.total) || 0;
-      const subtotalNum = Number(o.subtotal) || totalNum;
-      const discountNum = Number(o.discount) || 0;
+      const totalNum = parseOrderAmount(o.total);
+      const subtotalNum = parseOrderAmount(o.subtotal) || totalNum;
+      const discountNum = parseOrderAmount(o.discount);
       return {
         ...o,
         total: totalNum,
@@ -82,7 +118,9 @@ export default function ManagementFinance({
       const date = new Date(o.timestamp);
       if (isNaN(date.getTime())) return false;
       const now = new Date();
-      if (filter === "DAILY") return date.toDateString() === now.toDateString();
+      if (filter === "DAILY") {
+        return getLocalDateStr(date) === getLocalDateStr(now) || date.toDateString() === now.toDateString();
+      }
       if (filter === "THIS_MONTH") {
         return (
           date.getMonth() === now.getMonth() &&
@@ -90,7 +128,7 @@ export default function ManagementFinance({
         );
       }
       if (filter === "CUSTOM") {
-        const dStr = date.toISOString().split("T")[0];
+        const dStr = getLocalDateStr(date);
         return dStr >= customStart && dStr <= customEnd;
       }
       return true;
@@ -105,7 +143,9 @@ export default function ManagementFinance({
       const date = new Date(e.timestamp);
       if (isNaN(date.getTime())) return false;
       const now = new Date();
-      if (filter === "DAILY") return date.toDateString() === now.toDateString();
+      if (filter === "DAILY") {
+        return getLocalDateStr(date) === getLocalDateStr(now) || date.toDateString() === now.toDateString();
+      }
       if (filter === "THIS_MONTH") {
         return (
           date.getMonth() === now.getMonth() &&
@@ -113,7 +153,7 @@ export default function ManagementFinance({
         );
       }
       if (filter === "CUSTOM") {
-        const dStr = date.toISOString().split("T")[0];
+        const dStr = getLocalDateStr(date);
         return dStr >= customStart && dStr <= customEnd;
       }
       return true;
@@ -413,10 +453,15 @@ export default function ManagementFinance({
             </div>
           </div>
 
-          {filter !== "ALL" && (
+          {filter !== "ALL" ? (
             <div className="text-[10px] text-emerald-950 font-bold pt-2 border-t border-emerald-200/80 mt-2 flex items-center justify-between">
-              <span>Total Keseluruhan:</span>
-              <span className="font-mono font-black text-emerald-900">{formatRupiah(allTimeRevenue)}</span>
+              <span>Total Keseluruhan (All-Time):</span>
+              <span className="font-mono font-black text-emerald-900">{formatRupiah(allTimeRevenue)} ({allTimeOrdersCount} Transaksi)</span>
+            </div>
+          ) : (
+            <div className="text-[10px] text-emerald-950 font-bold pt-2 border-t border-emerald-200/80 mt-2 flex items-center justify-between">
+              <span>Status Data:</span>
+              <span className="font-mono font-black text-emerald-900">Semua Waktu ({allTimeOrdersCount} Transaksi)</span>
             </div>
           )}
         </div>

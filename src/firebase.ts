@@ -131,8 +131,8 @@ export function subscribeToCategories(onData: (categories: string[]) => void) {
   );
 }
 
-// Quota-optimized orders listener: limits to recent 100 orders instead of scanning whole DB
-export function subscribeToOrders(onData: (orders: any[]) => void, maxLimit = 100) {
+// Quota-optimized orders listener: loads complete order history without artificial truncation
+export function subscribeToOrders(onData: (orders: any[]) => void, maxLimit = 5000) {
   const q = query(collection(db, "orders"), orderBy("timestamp", "desc"), limit(maxLimit));
   return onSnapshot(
     q,
@@ -151,24 +151,30 @@ export function subscribeToOrders(onData: (orders: any[]) => void, maxLimit = 10
       console.warn("Firestore orders subscribe orderBy error (falling back to limited query):", error);
       // Fallback query without orderBy index
       const fallbackQ = query(collection(db, "orders"), limit(maxLimit));
-      return onSnapshot(fallbackQ, (snap) => {
-        const items: any[] = [];
-        snap.forEach((docSnap) => {
-          const data = docSnap.data();
-          items.push({
-            ...data,
-            orderId: data.orderId || docSnap.id,
+      return onSnapshot(
+        fallbackQ,
+        (snap) => {
+          const items: any[] = [];
+          snap.forEach((docSnap) => {
+            const data = docSnap.data();
+            items.push({
+              ...data,
+              orderId: data.orderId || docSnap.id,
+            });
           });
-        });
-        items.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
-        onData(items);
-      });
+          items.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+          onData(items);
+        },
+        (fallbackErr) => {
+          console.error("Firestore orders fallback subscription error:", fallbackErr);
+        }
+      );
     }
   );
 }
 
-// Quota-optimized expenses listener (limit to 100)
-export function subscribeToExpenses(onData: (expenses: any[]) => void, maxLimit = 100) {
+// Quota-optimized expenses listener (up to 500 records)
+export function subscribeToExpenses(onData: (expenses: any[]) => void, maxLimit = 500) {
   const q = query(collection(db, "expenses"), limit(maxLimit));
   return onSnapshot(
     q,
@@ -190,8 +196,8 @@ export function subscribeToExpenses(onData: (expenses: any[]) => void, maxLimit 
   );
 }
 
-// Quota-optimized pre-orders listener (limit to 100)
-export function subscribeToPreOrders(onData: (preOrders: any[]) => void, maxLimit = 100) {
+// Quota-optimized pre-orders listener (up to 500 records)
+export function subscribeToPreOrders(onData: (preOrders: any[]) => void, maxLimit = 500) {
   const q = query(collection(db, "preOrders"), limit(maxLimit));
   return onSnapshot(
     q,

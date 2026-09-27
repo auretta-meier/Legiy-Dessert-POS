@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { formatRupiah, Product } from "../data";
+import { parseOrderAmount } from "./ManagementFinance";
 import {
   Search,
   User,
@@ -19,14 +20,16 @@ import {
   Phone,
   Utensils,
   Share2,
+  ChefHat,
 } from "lucide-react";
 
 export interface ManagementHistoryProps {
   orderHistory: any[];
-  printReceipt: (order?: any) => void;
+  printReceipt: (order?: any, options?: { mode?: "DEFAULT" | "BOTH" | "NORMAL_ONLY" | "STAFF_ONLY" }) => void;
   setOrderHistory: any;
   queueSync?: any;
   productList?: Product[];
+  printStaffReceipt?: boolean;
 }
 
 export interface ParsedOrderItem {
@@ -293,20 +296,18 @@ export default function ManagementHistory({
     productList,
   ]);
 
-  // Total revenue for filtered orders & all orders
+  // Total revenue for filtered orders & all orders (strictly aligned with ManagementFinance)
   const totalFilteredRevenue = useMemo(() => {
-    return filteredOrders.reduce((acc, o) => {
-      const tot = typeof o.total === "number" ? o.total : parseFloat(o.total) || 0;
-      return acc + tot;
-    }, 0);
+    return filteredOrders
+      .filter((o) => o.orderStatus !== "Cancel" && o.orderStatus !== "Batal")
+      .reduce((acc, o) => acc + parseOrderAmount(o.total), 0);
   }, [filteredOrders]);
 
   const totalOverallRevenue = useMemo(() => {
     const list = Array.isArray(orderHistory) ? orderHistory : [];
-    return list.reduce((acc, o) => {
-      const tot = typeof o.total === "number" ? o.total : parseFloat(o.total) || 0;
-      return acc + tot;
-    }, 0);
+    return list
+      .filter((o) => o.orderStatus !== "Cancel" && o.orderStatus !== "Batal")
+      .reduce((acc, o) => acc + parseOrderAmount(o.total), 0);
   }, [orderHistory]);
 
   // Copy order summary to clipboard for WhatsApp
@@ -823,38 +824,52 @@ export default function ManagementHistory({
             </div>
 
             {/* Modal Footer Buttons */}
-            <div className="p-3.5 bg-slate-50 border-t border-slate-200 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => printReceipt(modalOrder)}
-                className="flex-1 py-2.5 bg-[#D81B60] hover:bg-[#C2185B] text-white font-black rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all"
-              >
-                <Printer size={15} /> Cetak Struk (80mm)
-              </button>
-              <button
-                type="button"
-                onClick={(e) =>
-                  handleCopyOrder(
-                    modalOrder,
-                    extractOrderItems(modalOrder, productList),
-                    e
-                  )
-                }
-                className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all"
-              >
-                <Copy size={14} /> WhatsApp
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  handleDeleteOrder(modalOrder, e);
-                  setModalOrder(null);
-                }}
-                className="p-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl text-xs flex items-center justify-center transition-all"
-                title="Hapus Pesanan"
-              >
-                <Trash2 size={16} />
-              </button>
+            <div className="p-3.5 bg-slate-50 border-t border-slate-200 flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => printReceipt(modalOrder)}
+                  className="flex-1 py-2.5 bg-[#D81B60] hover:bg-[#C2185B] text-white font-black rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all"
+                  title="Cetak struk pelanggan (dan nota staff jika toggle aktif)"
+                >
+                  <Printer size={15} /> Cetak Struk (80mm)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => printReceipt(modalOrder, { mode: "STAFF_ONLY" })}
+                  className="py-2.5 px-3 bg-stone-900 hover:bg-black text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all"
+                  title="Cetak hanya nota staff/dapur (hemat kertas)"
+                >
+                  <ChefHat size={14} className="text-amber-300" /> Nota Staff
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={(e) =>
+                    handleCopyOrder(
+                      modalOrder,
+                      extractOrderItems(modalOrder, productList),
+                      e
+                    )
+                  }
+                  className="flex-1 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all"
+                >
+                  <Copy size={14} /> Salin WhatsApp
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    handleDeleteOrder(modalOrder, e);
+                    setModalOrder(null);
+                  }}
+                  className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl text-xs flex items-center justify-center transition-all"
+                  title="Hapus Pesanan"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -51,8 +51,6 @@ import {
   ProductAddonGroup,
   ProductAddonOption,
   SelectedAddon,
-  DEFAULT_BEVERAGE_ADDONS,
-  DEFAULT_DESSERT_ADDONS,
 } from "./data";
 import ManagementFinance from "./components/ManagementFinance";
 import ManagementPerformance from "./components/ManagementPerformance";
@@ -313,13 +311,12 @@ function ManagementMenu({
   const openAdd = () => {
     setEditingProduct(null);
     const cat = categories[0] || "";
-    const isDrink = cat.toLowerCase().includes("minuman") || cat.toLowerCase().includes("drink") || cat.toLowerCase().includes("kopi");
     setForm({
       name: "",
       category: cat,
       price: 0,
       cogs: 0,
-      addons: isDrink ? JSON.parse(JSON.stringify(DEFAULT_BEVERAGE_ADDONS)) : JSON.parse(JSON.stringify(DEFAULT_DESSERT_ADDONS)),
+      addons: [],
     });
     setIsModalOpen(true);
   };
@@ -330,9 +327,7 @@ function ManagementMenu({
       ...p,
       addons: p.addons && p.addons.length > 0 
         ? JSON.parse(JSON.stringify(p.addons))
-        : (p.category.toLowerCase().includes("minuman") || p.category.toLowerCase().includes("drink") || p.category.toLowerCase().includes("kopi"))
-          ? JSON.parse(JSON.stringify(DEFAULT_BEVERAGE_ADDONS))
-          : JSON.parse(JSON.stringify(DEFAULT_DESSERT_ADDONS)),
+        : [],
     });
     setIsModalOpen(true);
   };
@@ -382,20 +377,6 @@ function ManagementMenu({
     setForm((prev) => ({
       ...prev,
       addons: [...(prev.addons || []), newGroup],
-    }));
-  };
-
-  const applyBeveragePreset = () => {
-    setForm((prev) => ({
-      ...prev,
-      addons: JSON.parse(JSON.stringify(DEFAULT_BEVERAGE_ADDONS)),
-    }));
-  };
-
-  const applyDessertPreset = () => {
-    setForm((prev) => ({
-      ...prev,
-      addons: JSON.parse(JSON.stringify(DEFAULT_DESSERT_ADDONS)),
     }));
   };
 
@@ -605,24 +586,10 @@ function ManagementMenu({
                 <div className="flex flex-wrap gap-1.5 mb-4">
                   <button
                     type="button"
-                    onClick={applyBeveragePreset}
-                    className="text-[11px] font-black bg-pink-50 text-[#D81B60] hover:bg-pink-100 border border-pink-200 px-2.5 py-1 rounded-lg transition-colors"
-                  >
-                    + Preset Minuman (Gula & Es)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={applyDessertPreset}
-                    className="text-[11px] font-black bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 px-2.5 py-1 rounded-lg transition-colors"
-                  >
-                    + Preset Dessert (Suhu & Topping)
-                  </button>
-                  <button
-                    type="button"
                     onClick={addAddonGroup}
                     className="text-[11px] font-black bg-stone-100 text-stone-800 hover:bg-stone-200 border border-stone-200 px-2.5 py-1 rounded-lg transition-colors"
                   >
-                    + Tambah Grup Baru
+                    + Tambah Opsi Kustomisasi Baru
                   </button>
                   {form.addons && form.addons.length > 0 && (
                     <button
@@ -2487,74 +2454,107 @@ export default function App() {
 
   // Calculations
   const subtotal = useMemo(
-    () => cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
+    () => cart.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 1), 0),
     [cart],
   );
-  const tax = useMemo(() => Math.max(0, subtotal - discount) * TAX_RATE, [subtotal, discount]);
-  const total = useMemo(() => Math.max(0, subtotal - discount) + tax, [subtotal, discount, tax]);
+  const tax = useMemo(() => Math.round(Math.max(0, subtotal - discount) * TAX_RATE), [subtotal, discount]);
+  const total = useMemo(() => Math.round(Math.max(0, subtotal - discount) + tax), [subtotal, discount, tax]);
 
-  const cashGiven = parseInt(cashAmount.replace(/\D/g, "")) || 0;
+  const cashGiven = useMemo(() => {
+    const raw = parseInt(String(cashAmount).replace(/\D/g, ""), 10);
+    return isNaN(raw) ? 0 : raw;
+  }, [cashAmount]);
   const change = Math.max(0, cashGiven - total);
+
+  // Helper to open checkout modal with smart defaults
+  const openCheckoutModal = () => {
+    if (cart.length === 0) {
+      alert("Keranjang masih kosong. Silakan pilih menu terlebih dahulu.");
+      return;
+    }
+    const currentTotal = Math.round(Math.max(0, subtotal - discount) + tax);
+    setPaymentMethod("Cash");
+    setCashAmount(currentTotal > 0 ? currentTotal.toLocaleString("id-ID") : "");
+    setIsCheckoutModalOpen(true);
+    setIsMobileCartOpen(false);
+  };
 
   // Handle Checkout
   const handleCheckout = async () => {
-    if (paymentMethod === "Cash" && cashGiven < total) {
-      alert("Nominal uang tunai kurang dari total belanja.");
+    if (cart.length === 0) {
+      alert("Keranjang masih kosong. Silakan pilih menu terlebih dahulu.");
+      setIsCheckoutModalOpen(false);
       return;
     }
     if (!paymentMethod) {
-      alert("Pilih metode pembayaran terlebih dahulu.");
+      alert("Silakan pilih metode pembayaran terlebih dahulu (Cash, QRIS, Transfer Bank, atau E-Wallet).");
+      return;
+    }
+    if (paymentMethod === "Cash" && cashGiven < total) {
+      alert(`Nominal uang tunai (${formatRupiah(cashGiven)}) kurang dari total belanja (${formatRupiah(total)}). Silakan masukkan uang yang cukup atau klik tombol 'Uang Pas'.`);
       return;
     }
 
     setIsProcessing(true);
 
-    const orderId = `LGY-${new Date().getTime().toString().slice(-6)}`;
-    const timestamp = new Date().toISOString();
+    try {
+      const orderId = `LGY-${new Date().getTime().toString().slice(-6)}`;
+      const timestamp = new Date().toISOString();
 
-    const itemsDescription = cart
-      .map((item) => {
-        const addonsText = item.selectedAddons && item.selectedAddons.length > 0
-          ? ` [${item.selectedAddons.map((a: any) => a.optionName || a.name).join(", ")}]`
-          : "";
-        const noteText = item.itemNotes ? ` (Catatan: ${item.itemNotes})` : "";
-        return `${item.name}${addonsText}${noteText} (${item.quantity}x)`;
-      })
-      .join(", ");
+      const itemsDescription = cart
+        .map((item) => {
+          const addonsText = item.selectedAddons && item.selectedAddons.length > 0
+            ? ` [${item.selectedAddons.map((a: any) => a.optionName || a.name).join(", ")}]`
+            : "";
+          const noteText = item.itemNotes ? ` (Catatan: ${item.itemNotes})` : "";
+          return `${item.name}${addonsText}${noteText} (${item.quantity}x)`;
+        })
+        .join(", ");
 
-    const orderData = {
-      timestamp,
-      orderId,
-      customerName: customerName || "Guest",
-      items: itemsDescription,
-      orderType,
-      paymentMethod,
-      subtotal,
-      discount,
-      tax,
-      total,
-      cashGiven: paymentMethod === "Cash" ? cashGiven : total,
-      change: paymentMethod === "Cash" ? change : 0,
-      cartSnapshot: [...cart],
-      orderStatus: "Proses",
-      paymentStatus: "LUNAS",
-    };
+      const orderData = {
+        timestamp,
+        orderId,
+        customerName: customerName || "Guest",
+        items: itemsDescription,
+        orderType,
+        paymentMethod,
+        subtotal,
+        discount,
+        tax,
+        total,
+        cashGiven: paymentMethod === "Cash" ? cashGiven : total,
+        change: paymentMethod === "Cash" ? change : 0,
+        cartSnapshot: [...cart],
+        orderStatus: "Proses",
+        paymentStatus: "LUNAS",
+      };
 
-    // Sync to Firestore & Sheets
-    queueSync("ORDER", "UPSERT", orderData);
+      // Sync to Firestore & Sheets (async in background)
+      queueSync("ORDER", "UPSERT", orderData).catch((syncErr) => {
+        console.warn("Background order sync notice:", syncErr);
+      });
 
-    const fullOrderDetails = { ...orderData, cartSnapshot: [...cart] };
-    setLastOrderDetails(fullOrderDetails);
-    setOrderHistory((prev) => [fullOrderDetails, ...prev]);
-    setIsProcessing(false);
-    setIsCheckoutModalOpen(false);
-    clearCart();
-    setCashAmount("");
-    setPaymentMethod("");
-    setCustomerName("");
+      const fullOrderDetails = { ...orderData, cartSnapshot: [...cart] };
+      setLastOrderDetails(fullOrderDetails);
+      setOrderHistory((prev) => [fullOrderDetails, ...prev]);
+      setIsCheckoutModalOpen(false);
+      clearCart();
+      setCashAmount("");
+      setPaymentMethod("");
+      setCustomerName("");
 
-    // Directly print receipt immediately (no in-app print dialog / confirmation prompt)
-    printReceipt(fullOrderDetails);
+      // Directly print receipt immediately (no in-app print dialog / confirmation prompt)
+      try {
+        printReceipt(fullOrderDetails);
+      } catch (printErr) {
+        console.warn("Print receipt execution notice:", printErr);
+      }
+    } catch (err: any) {
+      console.error("Checkout process error:", err);
+      alert("Gagal menyelesaikan transaksi: " + (err?.message || String(err)));
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // Receipt Printing (Supports Normal Only, Staff Only, or Both with Autocut Separation)
@@ -3086,13 +3086,13 @@ export default function App() {
                     <span className="text-lg font-black text-stone-900">{formatRupiah(total)}</span>
                   </div>
                   <button
-                    onClick={() => setIsCheckoutModalOpen(true)}
-                    disabled={cart.length === 0}
+                    onClick={openCheckoutModal}
                     className={`py-2.5 px-4 rounded-xl font-bold text-xs transition-all shadow-xs flex items-center gap-1.5 ${
                       cart.length === 0
-                        ? "bg-stone-200 text-stone-400 cursor-not-allowed"
+                        ? "bg-stone-200 text-stone-400 hover:bg-stone-300"
                         : "bg-[#D45D79] hover:bg-[#C44D69] text-white active:scale-95"
                     }`}
+                    title={cart.length === 0 ? "Pilih menu terlebih dahulu" : "Lanjut ke Pembayaran"}
                   >
                     <span>Bayar</span>
                     <ChevronRight size={14} strokeWidth={2.5} />
@@ -3393,14 +3393,10 @@ export default function App() {
               </div>
 
               <button
-                onClick={() => {
-                  setIsMobileCartOpen(false);
-                  setIsCheckoutModalOpen(true);
-                }}
-                disabled={cart.length === 0}
+                onClick={openCheckoutModal}
                 className={`w-full py-3 rounded-xl font-bold text-xs transition-all shadow-xs mt-2 flex items-center justify-center gap-2 ${
                   cart.length === 0
-                    ? "bg-stone-200 text-stone-400 cursor-not-allowed"
+                    ? "bg-stone-200 text-stone-400 hover:bg-stone-300"
                     : "bg-[#D45D79] hover:bg-[#C44D69] text-white active:scale-98"
                 }`}
               >
@@ -3482,12 +3478,19 @@ export default function App() {
                       <button
                         key={cat}
                         onClick={() => {
-                          if (cat === "Cash") setPaymentMethod("Cash");
-                          else if (cat === "QRIS") setPaymentMethod("QRIS");
-                          else if (cat === "Transfer Bank")
+                          if (cat === "Cash") {
+                            setPaymentMethod("Cash");
+                            const currentNum = parseInt(String(cashAmount).replace(/\D/g, ""), 10) || 0;
+                            if (currentNum < total) {
+                              setCashAmount(total > 0 ? total.toLocaleString("id-ID") : "");
+                            }
+                          } else if (cat === "QRIS") {
+                            setPaymentMethod("QRIS");
+                          } else if (cat === "Transfer Bank") {
                             setPaymentMethod("Transfer BRI");
-                          else if (cat === "E-Wallet")
+                          } else if (cat === "E-Wallet") {
                             setPaymentMethod("Gopay");
+                          }
                         }}
                         className={`rounded-xl flex items-center justify-start px-3 py-2.5 gap-2.5 transition-all outline-none border text-left
                           ${
@@ -3622,21 +3625,24 @@ export default function App() {
               </button>
               <button
                 onClick={handleCheckout}
-                disabled={
-                  !paymentMethod ||
-                  (paymentMethod === "Cash" && cashGiven < total) ||
+                disabled={isProcessing}
+                className={`flex-1 py-3 px-4 rounded-xl font-black flex items-center justify-center gap-2 transition-all text-xs sm:text-sm shadow-xs active:scale-98 text-white ${
                   isProcessing
-                }
-                className={`flex-1 py-2.5 rounded-xl font-bold flex items-center justify-center transition-all text-xs shadow-xs
-                  ${
-                    !paymentMethod ||
-                    (paymentMethod === "Cash" && cashGiven < total) ||
-                    isProcessing
-                      ? "bg-stone-200 text-stone-400 cursor-not-allowed shadow-none"
-                      : "bg-[#D45D79] hover:bg-[#C44D69] active:scale-95 text-white"
-                  }`}
+                    ? "bg-stone-400 cursor-not-allowed shadow-none"
+                    : "bg-[#D81B60] hover:bg-[#C2185B]"
+                }`}
               >
-                {isProcessing ? "Menyimpan Transaksi..." : "Selesaikan Transaksi"}
+                {isProcessing ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin text-white" />
+                    <span>Menyimpan Transaksi...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check size={16} strokeWidth={2.5} />
+                    <span>Selesaikan Pembayaran • {formatRupiah(total)}</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

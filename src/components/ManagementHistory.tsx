@@ -2,6 +2,14 @@ import React, { useState, useMemo } from "react";
 import { formatRupiah, Product } from "../data";
 import { parseOrderAmount } from "./ManagementFinance";
 import {
+  getWIBDateKey,
+  getWIBTodayKey,
+  getWIBMonthKey,
+  getWIBCurrentMonthKey,
+  formatWIBDate,
+  formatWIBTime,
+} from "../dateUtils";
+import {
   Search,
   User,
   Printer,
@@ -201,12 +209,17 @@ export default function ManagementHistory({
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 
     const filtered = list.filter((order) => {
-      const orderTime = order.timestamp ? new Date(order.timestamp).getTime() : 0;
+      const orderDateKey = getWIBDateKey(order.timestamp);
+      const todayKey = getWIBTodayKey();
 
       // Period Filter
-      if (filterPeriod === "TODAY" && orderTime < startOfToday) return false;
-      if (filterPeriod === "7DAYS" && orderTime < sevenDaysAgo) return false;
-      if (filterPeriod === "MONTH" && orderTime < startOfMonth) return false;
+      if (filterPeriod === "TODAY" && orderDateKey !== todayKey) return false;
+      if (filterPeriod === "7DAYS") {
+        const orderTime = order.timestamp ? new Date(order.timestamp).getTime() : 0;
+        const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        if (orderTime < sevenDaysAgo) return false;
+      }
+      if (filterPeriod === "MONTH" && getWIBMonthKey(order.timestamp) !== getWIBCurrentMonthKey()) return false;
 
       // Payment Filter
       if (filterPayment !== "ALL" && order.paymentMethod !== filterPayment) {
@@ -523,11 +536,7 @@ export default function ManagementHistory({
                         </div>
                         {/* Formatted Date & Time */}
                         <div className="text-[11px] text-slate-400 font-mono mt-0.5 leading-snug">
-                          {orderDate.toLocaleDateString("id-ID")},{" "}
-                          {orderDate.toLocaleTimeString("id-ID", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
+                          {formatWIBDate(order.timestamp)}, {formatWIBTime(order.timestamp)} WIB
                         </div>
                       </div>
 
@@ -712,17 +721,7 @@ export default function ManagementHistory({
                   </span>
                 </div>
                 <div className="col-span-2 pt-1 border-t border-slate-200 text-slate-500 font-mono text-[11px]">
-                  {new Date(modalOrder.timestamp).toLocaleDateString("id-ID", {
-                    weekday: "long",
-                    day: "2-digit",
-                    month: "long",
-                    year: "numeric",
-                  })}{" "}
-                  {new Date(modalOrder.timestamp).toLocaleTimeString("id-ID", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}{" "}
-                  WIB
+                  {formatWIBDate(modalOrder.timestamp)}, {formatWIBTime(modalOrder.timestamp)} WIB
                 </div>
               </div>
 

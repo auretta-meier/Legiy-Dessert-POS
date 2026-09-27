@@ -1,6 +1,7 @@
 import React from "react";
 import { QRCodeCanvas } from "qrcode.react";
 import { STORE_LOGO_PRINT } from "../logo";
+import { formatWIBDate, formatWIBTime } from "../dateUtils";
 
 export type ReceiptFrameStyle =
   | "ribbon"
@@ -136,15 +137,8 @@ export default function CuteReceipt({
       ? order.items
       : [];
 
-  const formattedDate = new Date(order.timestamp).toLocaleDateString("id-ID", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-  const formattedTime = new Date(order.timestamp).toLocaleTimeString("id-ID", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const formattedDate = formatWIBDate(order.timestamp);
+  const formattedTime = formatWIBTime(order.timestamp);
 
   const divider = activePreset.divider;
   const borderLine = activePreset.borderLine;

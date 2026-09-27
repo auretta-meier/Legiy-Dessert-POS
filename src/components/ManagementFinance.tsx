@@ -1,6 +1,14 @@
 import React, { useState, useMemo } from "react";
 import { formatRupiah, Product } from "../data";
 import {
+  getWIBDateKey,
+  getWIBTodayKey,
+  getWIBMonthKey,
+  getWIBCurrentMonthKey,
+  formatWIBDate,
+  formatWIBDateTime,
+} from "../dateUtils";
+import {
   TrendingUp,
   DollarSign,
   PieChart as PieChartIcon,
@@ -75,24 +83,15 @@ export default function ManagementFinance({
 }: ManagementFinanceProps) {
   // Default filter to "ALL" so it immediately aligns with Riwayat Transaksi (All-Time)
   const [filter, setFilter] = useState<"DAILY" | "THIS_MONTH" | "ALL" | "CUSTOM">("ALL");
-  const [customStart, setCustomStart] = useState(
-    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
-  );
-  const [customEnd, setCustomEnd] = useState(
-    new Date().toISOString().split("T")[0]
-  );
+  const [customStart, setCustomStart] = useState(() => {
+    const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    return getWIBDateKey(d);
+  });
+  const [customEnd, setCustomEnd] = useState(() => getWIBTodayKey());
 
   // Expense modal state
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [expenseForm, setExpenseForm] = useState({ desc: "", amount: "" });
-
-  // Safe local date formatting helper to avoid UTC timezone day shifts
-  const getLocalDateStr = (d: Date) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  };
 
   // Parse orders safely with robust numeric handling
   const parsedOrders = useMemo(() => {
@@ -110,51 +109,43 @@ export default function ManagementFinance({
     });
   }, [orderHistory]);
 
-  // Filtered orders according to time range
+  // Filtered orders according to time range (strictly in Asia/Jakarta WIB timezone)
   const filteredOrders = useMemo(() => {
     return parsedOrders.filter((o) => {
       if (!o || !o.timestamp) return false;
       if (o.orderStatus === "Cancel" || o.orderStatus === "Batal") return false;
-      const date = new Date(o.timestamp);
-      if (isNaN(date.getTime())) return false;
-      const now = new Date();
+      const orderDateKey = getWIBDateKey(o.timestamp);
+      if (!orderDateKey) return false;
+
       if (filter === "DAILY") {
-        return getLocalDateStr(date) === getLocalDateStr(now) || date.toDateString() === now.toDateString();
+        return orderDateKey === getWIBTodayKey();
       }
       if (filter === "THIS_MONTH") {
-        return (
-          date.getMonth() === now.getMonth() &&
-          date.getFullYear() === now.getFullYear()
-        );
+        return getWIBMonthKey(o.timestamp) === getWIBCurrentMonthKey();
       }
       if (filter === "CUSTOM") {
-        const dStr = getLocalDateStr(date);
-        return dStr >= customStart && dStr <= customEnd;
+        return orderDateKey >= customStart && orderDateKey <= customEnd;
       }
       return true;
     });
   }, [parsedOrders, filter, customStart, customEnd]);
 
-  // Filtered expenses
+  // Filtered expenses (strictly in Asia/Jakarta WIB timezone)
   const filteredExpenses = useMemo(() => {
     const list = Array.isArray(expenses) ? expenses : [];
     return list.filter((e) => {
       if (!e || !e.timestamp) return false;
-      const date = new Date(e.timestamp);
-      if (isNaN(date.getTime())) return false;
-      const now = new Date();
+      const expDateKey = getWIBDateKey(e.timestamp);
+      if (!expDateKey) return false;
+
       if (filter === "DAILY") {
-        return getLocalDateStr(date) === getLocalDateStr(now) || date.toDateString() === now.toDateString();
+        return expDateKey === getWIBTodayKey();
       }
       if (filter === "THIS_MONTH") {
-        return (
-          date.getMonth() === now.getMonth() &&
-          date.getFullYear() === now.getFullYear()
-        );
+        return getWIBMonthKey(e.timestamp) === getWIBCurrentMonthKey();
       }
       if (filter === "CUSTOM") {
-        const dStr = getLocalDateStr(date);
-        return dStr >= customStart && dStr <= customEnd;
+        return expDateKey >= customStart && expDateKey <= customEnd;
       }
       return true;
     });
@@ -229,10 +220,9 @@ export default function ManagementFinance({
     const map: { [key: string]: { date: string; revenue: number; orders: number; label: string } } = {};
 
     filteredOrders.forEach((o) => {
-      const d = new Date(o.timestamp);
-      if (isNaN(d.getTime())) return;
-      const key = d.toISOString().split("T")[0];
-      const label = d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+      const key = getWIBDateKey(o.timestamp);
+      if (!key) return;
+      const label = formatWIBDate(o.timestamp);
       if (!map[key]) {
         map[key] = { date: key, revenue: 0, orders: 0, label };
       }
@@ -959,11 +949,7 @@ export default function ManagementFinance({
                 <div>
                   <p className="text-xs sm:text-sm font-black text-stone-900">{e.desc}</p>
                   <p className="text-[10px] text-stone-500 font-bold mt-0.5">
-                    {new Date(e.timestamp).toLocaleDateString("id-ID")}{" "}
-                    {new Date(e.timestamp).toLocaleTimeString("id-ID", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {formatWIBDateTime(e.timestamp)} WIB
                   </p>
                 </div>
                 <div className="flex items-center gap-3">

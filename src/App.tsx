@@ -76,6 +76,20 @@ import {
   testFirestoreConnection,
   isQuotaError,
 } from "./firebase";
+import {
+  syncToGoogleCloud,
+  fetchFromGoogleCloud,
+  syncToGoogleSheets,
+  fetchFromGoogleSheets,
+} from "./googleSheetsService";
+import {
+  formatWIBDate,
+  formatWIBTime,
+  formatWIBDateTime,
+  getWIBDateKey,
+  getWIBTodayKey,
+} from "./dateUtils";
+import storeCloudBackup from "./storeCloudBackup.json";
 import { QRCodeCanvas } from "qrcode.react";
 import { STORE_LOGO, STORE_LOGO_PRINT } from "./logo";
 import CuteReceipt, { CUTE_FRAME_PRESETS, ReceiptFrameStyle } from "./components/CuteReceipt";
@@ -120,11 +134,46 @@ export const DEFAULT_RECEIPT_SETTINGS = {
   printStaffReceipt: true,
 };
 
-function useLocalStorage<T>(key: string, initialValue: T) {
+// Unified Master Cloud Baseline (Backed up directly from the cloud database)
+export const MASTER_CLOUD_ORDERS: any[] = storeCloudBackup.orders || [];
+export const MASTER_CLOUD_CATEGORIES: string[] = (storeCloudBackup.categories || []).map(
+  (c: any) => c.name || c.id || String(c)
+);
+export const MASTER_CLOUD_PRODUCTS: Product[] = (storeCloudBackup.products || []).map((p: any) => ({
+  id: String(p.id || p.name),
+  name: p.name || "",
+  price: Number(p.price) || 0,
+  cogs: Number(p.cogs) || 0,
+  category: p.category || "General",
+  imageColor: p.imageColor || "bg-pink-100 text-pink-800",
+  addons: p.addons || undefined,
+}));
+
+function useLocalStorage<T>(key: string, initialValue: T, isArrayMerge = false) {
   const [storedValue, setStoredValue] = useState<T>(() => {
     try {
       const item = window.localStorage.getItem(key);
-      return item ? JSON.parse(item) : initialValue;
+      if (!item) {
+        window.localStorage.setItem(key, JSON.stringify(initialValue));
+        return initialValue;
+      }
+      const parsed = JSON.parse(item);
+      if (isArrayMerge && Array.isArray(parsed) && Array.isArray(initialValue)) {
+        // If local storage has fewer items than master cloud backup (e.g. freshly opened Live app origin),
+        // seamlessly merge all missing master cloud records so both Live and Preview always share the exact same database!
+        if (parsed.length < initialValue.length) {
+          const existingIds = new Set(
+            parsed.map((x: any) => String(x.orderId || x.id || x.name || x))
+          );
+          const missing = initialValue.filter(
+            (x: any) => !existingIds.has(String(x.orderId || x.id || x.name || x))
+          );
+          const combined = [...parsed, ...missing] as unknown as T;
+          window.localStorage.setItem(key, JSON.stringify(combined));
+          return combined;
+        }
+      }
+      return parsed;
     } catch (error) {
       console.warn(`Error reading localStorage key "${key}":`, error);
       return initialValue;
@@ -818,7 +867,7 @@ function ManagementPreOrder({
       customer: form.customer,
       orderDetails: form.orderDetails,
       paymentStatus: form.paymentStatus || "Belum Bayar",
-      fetchDate: form.fetchDate || new Date().toLocaleDateString("id-ID"),
+      fetchDate: form.fetchDate || formatWIBDate(new Date()),
       timestamp: new Date().toISOString(),
     };
     setPreOrders((prev: any[]) => [
@@ -1040,11 +1089,7 @@ function ManagementExpense({
                 <div className="pl-2">
                   <p className="text-sm font-bold text-stone-800">{e.desc}</p>
                   <p className="text-[10px] text-stone-400 font-semibold mt-0.5 tracking-widest">
-                    {new Date(e.timestamp).toLocaleDateString("id-ID")}{" "}
-                    {new Date(e.timestamp).toLocaleTimeString("id-ID", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {formatWIBDateTime(e.timestamp)} WIB
                   </p>
                 </div>
                 <div className="flex items-center gap-4">
@@ -1259,23 +1304,23 @@ function ManagementSettings({
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6">
-        {/* Firebase Cloud Backend & Data Migration Card */}
+        {/* Firebase & Google Cloud Unified Database Card */}
         <div className="bg-white rounded-2xl border-2 border-stone-200 p-5 shadow-xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone-200">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-orange-100 border border-orange-200 flex items-center justify-center text-orange-600">
-                <Database size={20} />
+              <div className="w-10 h-10 rounded-xl bg-rose-100 border border-rose-200 flex items-center justify-center text-[#D81B60]">
+                <Cloud size={20} />
               </div>
               <div>
                 <h4 className="text-base font-black text-stone-900 flex items-center gap-2 flex-wrap">
-                  Firebase Cloud Firestore & Database Sync
+                  Satu Cloud Database Terpadu (Live & Preview)
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
                     <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
-                    {firebaseConnected ? "Terhubung Cloud (Real-time)" : "Connecting..."}
+                    {firebaseConnected ? "Cloud Sinkron Aktif" : "Menghubungkan..."}
                   </span>
                 </h4>
                 <p className="text-xs text-stone-600 font-bold mt-0.5">
-                  Backend database Google Cloud Firestore aktif. Data menu, pesanan, dan pengeluaran otomatis tersimpan online.
+                  Aplikasi Live dan Preview Studio AI terhubung ke 1 Cloud yang sama. Data menu, transaksi, dan laporan keuangan 100% identik.
                 </p>
               </div>
             </div>
@@ -1285,7 +1330,7 @@ function ManagementSettings({
                 onClick={handleTestPing}
                 disabled={pingState.loading}
                 className="bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-300 px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all disabled:opacity-50 shadow-xs shrink-0"
-                title="Uji latensi dan pastikan server Firestore merespons"
+                title="Uji koneksi ke server Cloud"
               >
                 {pingState.loading ? (
                   <>
@@ -1295,7 +1340,7 @@ function ManagementSettings({
                 ) : (
                   <>
                     <Activity size={14} className="text-[#D45D79]" />
-                    Uji Ping Koneksi
+                    Uji Ping
                   </>
                 )}
               </button>
@@ -1305,17 +1350,17 @@ function ManagementSettings({
                   onClick={onImportFromSheets}
                   disabled={isImportingSheets || isMigrating}
                   className="bg-emerald-700 hover:bg-emerald-800 text-white px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all disabled:opacity-50 shadow-xs shrink-0"
-                  title="Tarik seluruh data produk & riwayat pesanan dari Excel / Google Sheets ke Firestore"
+                  title="Tarik seluruh data terbaru dari database Cloud"
                 >
                   {isImportingSheets ? (
                     <>
                       <RefreshCw size={14} className="animate-spin" />
-                      Menarik dari Sheets...
+                      Menarik dari Cloud...
                     </>
                   ) : (
                     <>
                       <ArrowDownToLine size={14} />
-                      Tarik dari Sheets
+                      Tarik dari Cloud
                     </>
                   )}
                 </button>
@@ -1326,17 +1371,17 @@ function ManagementSettings({
                   onClick={onMigrateAllToFirebase}
                   disabled={isMigrating || isImportingSheets}
                   className="bg-stone-900 hover:bg-black text-white px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all disabled:opacity-50 shadow-xs shrink-0"
-                  title="Unggah dan sinkronkan semua item lokal ke server Firestore"
+                  title="Backup semua data lokal saat ini ke database Cloud"
                 >
                   {isMigrating ? (
                     <>
                       <RefreshCw size={14} className="animate-spin" />
-                      Sedang Menyinkronkan...
+                      Mem-backup...
                     </>
                   ) : (
                     <>
                       <Cloud size={14} />
-                      Sinkron Lokal ke Cloud
+                      Backup Semua ke Cloud
                     </>
                   )}
                 </button>
@@ -2077,19 +2122,65 @@ export default function App() {
   };
 
   // Real-time Firebase Firestore synchronization
+  // 1. Unified Master Cloud Synchronization (Google Cloud Apps Script Database)
+  // Shared by both Live app origin and Studio Preview origin to ensure 100% database parity.
+  const syncWithMasterCloud = async () => {
+    try {
+      const cloudData = await fetchFromGoogleCloud();
+      if (!cloudData) return;
+
+      if (cloudData.categories && cloudData.categories.length > 0) {
+        setCategories(cloudData.categories);
+      }
+      if (cloudData.products && cloudData.products.length > 0) {
+        setProductList(cloudData.products);
+      }
+      if (cloudData.orders && cloudData.orders.length > 0) {
+        setOrderHistory((prevOrders: any[]) => {
+          const cloudIds = new Set(cloudData.orders.map((o: any) => String(o.orderId || o.id)));
+          const localOnly = (Array.isArray(prevOrders) ? prevOrders : []).filter(
+            (o: any) => o?.orderId && !cloudIds.has(String(o.orderId))
+          );
+          // If there are unsynced local orders created while offline, sync them to cloud
+          if (localOnly.length > 0) {
+            localOnly.forEach((o: any) => syncToGoogleCloud("ORDER", "UPSERT", o).catch(() => {}));
+          }
+          return [...localOnly, ...cloudData.orders];
+        });
+      }
+      if (cloudData.expenses && cloudData.expenses.length > 0) {
+        setExpenses(cloudData.expenses);
+      }
+      if (cloudData.preOrders && cloudData.preOrders.length > 0) {
+        setPreOrders(cloudData.preOrders);
+      }
+      setIsFirebaseConnected(true);
+    } catch (e) {
+      console.warn("Unified Cloud sync notice:", e);
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
 
+    // Initial pull on boot
+    syncWithMasterCloud();
+
+    // Auto-sync every 30 seconds & on tab focus so Live & Preview always receive data from the same cloud
+    const intervalTimer = setInterval(() => {
+      if (isMounted) syncWithMasterCloud();
+    }, 30000);
+
+    const handleWindowFocus = () => {
+      if (isMounted) syncWithMasterCloud();
+    };
+    window.addEventListener("focus", handleWindowFocus);
+
+    // Secondary Firestore listeners (gracefully handling quota limits without runaway writes)
     const unsubProducts = subscribeToProducts((items) => {
       if (!isMounted) return;
-      setIsFirebaseConnected(true);
       if (items && items.length > 0) {
         setProductList(items);
-      } else {
-        // Auto-seed initial catalog to Firestore if empty
-        seedInitialFirestoreData(products, initialCategories).then(() => {
-          if (isMounted) setIsFirebaseConnected(true);
-        });
       }
     });
 
@@ -2097,68 +2188,35 @@ export default function App() {
       if (!isMounted) return;
       if (items && items.length > 0) {
         setCategories(items);
-      } else {
-        setCategories(initialCategories);
       }
     });
 
     const unsubOrders = subscribeToOrders((items) => {
       if (!isMounted) return;
-      setOrderHistory((prevOrders: any[]) => {
-        const cloudList = items || [];
-        const cloudIds = new Set(cloudList.map((it: any) => String(it.orderId || it.id)));
-        const pendingLocal = (Array.isArray(prevOrders) ? prevOrders : []).filter(
-          (localOrd: any) => localOrd?.orderId && !cloudIds.has(String(localOrd.orderId))
-        );
-
-        // Auto-sync local orders to Firestore so live app receives them
-        if (pendingLocal.length > 0) {
-          pendingLocal.forEach((ord) => {
-            syncOrderToFirestore("UPSERT", ord).catch(() => {});
-          });
-        }
-
-        return [...pendingLocal, ...cloudList];
-      });
-    });
+      if (items && items.length > 0) {
+        setOrderHistory((prevOrders: any[]) => {
+          const cloudIds = new Set(items.map((it: any) => String(it.orderId || it.id)));
+          const pending = (Array.isArray(prevOrders) ? prevOrders : []).filter(
+            (o: any) => o?.orderId && !cloudIds.has(String(o.orderId))
+          );
+          return [...pending, ...items];
+        });
+      }
+    }, 100);
 
     const unsubExpenses = subscribeToExpenses((items) => {
       if (!isMounted) return;
-      setExpenses((prevExpenses: any[]) => {
-        const cloudList = items || [];
-        const cloudIds = new Set(cloudList.map((it: any) => String(it.id)));
-        const pendingLocal = (Array.isArray(prevExpenses) ? prevExpenses : []).filter(
-          (localExp: any) => localExp?.id && !cloudIds.has(String(localExp.id))
-        );
-
-        if (pendingLocal.length > 0) {
-          pendingLocal.forEach((exp) => {
-            syncExpenseToFirestore("UPSERT", exp).catch(() => {});
-          });
-        }
-
-        return [...pendingLocal, ...cloudList];
-      });
-    });
+      if (items && items.length > 0) {
+        setExpenses(items);
+      }
+    }, 100);
 
     const unsubPreOrders = subscribeToPreOrders((items) => {
       if (!isMounted) return;
-      setPreOrders((prevPreOrders: any[]) => {
-        const cloudList = items || [];
-        const cloudIds = new Set(cloudList.map((it: any) => String(it.id)));
-        const pendingLocal = (Array.isArray(prevPreOrders) ? prevPreOrders : []).filter(
-          (localPo: any) => localPo?.id && !cloudIds.has(String(localPo.id))
-        );
-
-        if (pendingLocal.length > 0) {
-          pendingLocal.forEach((po) => {
-            syncPreOrderToFirestore("UPSERT", po).catch(() => {});
-          });
-        }
-
-        return [...pendingLocal, ...cloudList];
-      });
-    });
+      if (items && items.length > 0) {
+        setPreOrders(items);
+      }
+    }, 100);
 
     const unsubSettings = subscribeToReceiptSettings((cloudSettings) => {
       if (!isMounted) return;
@@ -2169,6 +2227,8 @@ export default function App() {
 
     return () => {
       isMounted = false;
+      clearInterval(intervalTimer);
+      window.removeEventListener("focus", handleWindowFocus);
       unsubProducts();
       unsubCategories();
       unsubOrders();
@@ -2178,12 +2238,11 @@ export default function App() {
     };
   }, []);
 
-  // Debounced auto-sync receipt settings to Firebase Firestore (prevents excessive writes while typing)
+  // Debounced auto-sync receipt settings to Cloud
   useEffect(() => {
     const timer = setTimeout(() => {
-      syncReceiptSettingsToFirestore(receiptSettings).catch((err) => {
-        console.warn("Auto-sync receipt settings to Firestore:", err);
-      });
+      syncReceiptSettingsToFirestore(receiptSettings).catch(() => {});
+      syncToGoogleCloud("SETTINGS", "UPSERT", receiptSettings).catch(() => {});
     }, 1500);
     return () => clearTimeout(timer);
   }, [receiptSettings]);
@@ -2193,87 +2252,115 @@ export default function App() {
     action: "UPSERT" | "DELETE",
     data: any
   ) => {
-    setSyncStatus(`Syncing to Firebase...`);
+    setSyncStatus(`Menyimpan ke Cloud...`);
     try {
+      // 1. Primary: Save to Unified Google Cloud database (shared by Live & Preview)
+      await syncToGoogleCloud(type, action, data);
+
+      // 2. Secondary: Save to Firestore in background (gracefully catches quota)
       if (type === "PRODUCT") {
-        await syncProductToFirestore(action, data);
+        syncProductToFirestore(action, data).catch(() => {});
       } else if (type === "CATEGORY") {
-        await syncCategoryToFirestore(action, data);
+        syncCategoryToFirestore(action, data).catch(() => {});
       } else if (type === "ORDER") {
-        await syncOrderToFirestore(action, data);
+        syncOrderToFirestore(action, data).catch(() => {});
       } else if (type === "EXPENSE") {
-        await syncExpenseToFirestore(action, data);
+        syncExpenseToFirestore(action, data).catch(() => {});
       } else if (type === "PRE_ORDER") {
-        await syncPreOrderToFirestore(action, data);
+        syncPreOrderToFirestore(action, data).catch(() => {});
       } else if (type === "SETTINGS") {
-        await syncReceiptSettingsToFirestore(data);
+        syncReceiptSettingsToFirestore(data).catch(() => {});
       }
+
       setIsFirebaseConnected(true);
-      setSyncStatus(null);
+      setSyncStatus("Tersimpan di Cloud");
+      setTimeout(() => setSyncStatus(null), 2500);
     } catch (err: any) {
-      if (isQuotaError(err)) {
-        console.warn("Firebase sync: Cloud quota reached, safely preserved in local storage.");
-        setSyncStatus("Tersimpan di perangkat (Kuota Cloud)");
-      } else {
-        console.warn("Firebase sync fallback:", err);
-        setSyncStatus("Offline saved");
-      }
+      console.warn("Cloud sync fallback:", err);
+      setSyncStatus("Tersimpan di Perangkat");
       setTimeout(() => setSyncStatus(null), 3000);
     }
   };
 
-  const handleMigrateAllToFirebase = async () => {
+  const handleBackupAllToCloud = async () => {
     setIsMigrating(true);
-    setSyncStatus("Migrating data to Firebase...");
+    setSyncStatus("Mem-backup semua data ke Cloud...");
     try {
+      // Backup all entities to unified Google Cloud database
       for (const p of productList) {
-        await syncProductToFirestore("UPSERT", p);
+        await syncToGoogleCloud("PRODUCT", "UPSERT", p);
       }
       for (const c of categories) {
-        await syncCategoryToFirestore("UPSERT", { name: c });
+        await syncToGoogleCloud("CATEGORY", "UPSERT", { name: c });
       }
       for (const o of orderHistory) {
-        await syncOrderToFirestore("UPSERT", o);
+        await syncToGoogleCloud("ORDER", "UPSERT", o);
       }
       for (const e of expenses) {
-        await syncExpenseToFirestore("UPSERT", e);
+        await syncToGoogleCloud("EXPENSE", "UPSERT", e);
       }
       for (const po of preOrders) {
-        await syncPreOrderToFirestore("UPSERT", po);
+        await syncToGoogleCloud("PRE_ORDER", "UPSERT", po);
       }
-      await syncReceiptSettingsToFirestore(receiptSettings);
+      await syncToGoogleCloud("SETTINGS", "UPSERT", receiptSettings);
+
+      // Secondary Firestore backup
+      for (const p of productList) {
+        syncProductToFirestore("UPSERT", p).catch(() => {});
+      }
+      for (const c of categories) {
+        syncCategoryToFirestore("UPSERT", { name: c }).catch(() => {});
+      }
+      for (const o of orderHistory) {
+        syncOrderToFirestore("UPSERT", o).catch(() => {});
+      }
+      for (const e of expenses) {
+        syncExpenseToFirestore("UPSERT", e).catch(() => {});
+      }
+      for (const po of preOrders) {
+        syncPreOrderToFirestore("UPSERT", po).catch(() => {});
+      }
+      syncReceiptSettingsToFirestore(receiptSettings).catch(() => {});
 
       setIsFirebaseConnected(true);
-      alert("Sukses! Semua data produk, kategori, riwayat transaksi, pengeluaran, dan pre-order berhasil disinkronkan ke Firebase Firestore.");
+      alert(
+        `Sukses Backup ke Cloud!\n` +
+        `• ${orderHistory.length} Riwayat Transaksi\n` +
+        `• ${productList.length} Menu Produk\n` +
+        `• ${categories.length} Kategori Menu\n` +
+        `• ${expenses.length} Catatan Pengeluaran\n\n` +
+        `Semua data telah dibackup ke Cloud. Aplikasi Live dan Preview kini menerima data dari satu cloud yang sama.`
+      );
     } catch (err: any) {
-      if (isQuotaError(err)) {
-        console.warn("Migration warning: Quota reached. Local data is intact.");
-        alert("Kuota harian Firestore telah tercapai. Data Anda tetap tersimpan aman di penyimpanan lokal perangkat.");
-      } else {
-        console.warn("Migration error:", err);
-        alert("Gagal memigrasikan sebagian data ke Firebase. Silakan periksa koneksi internet.");
-      }
+      console.warn("Backup error:", err);
+      alert("Gagal mem-backup sebagian data ke Cloud. Silakan periksa koneksi internet.");
     } finally {
       setIsMigrating(false);
       setSyncStatus(null);
     }
   };
 
-  const handleImportFromSheets = async () => {
+  const handlePullAllFromCloud = async () => {
     setIsImportingSheets(true);
-    setSyncStatus("Menarik data Excel / Google Sheets...");
+    setSyncStatus("Menarik data terbaru dari Cloud...");
     try {
-      const res = await importFromGoogleSheetsToFirestore();
-      if (res.success) {
+      const cloudData = await fetchFromGoogleCloud();
+      if (cloudData) {
+        if (cloudData.categories && cloudData.categories.length > 0) setCategories(cloudData.categories);
+        if (cloudData.products && cloudData.products.length > 0) setProductList(cloudData.products);
+        if (cloudData.orders && cloudData.orders.length > 0) setOrderHistory(cloudData.orders);
+        if (cloudData.expenses) setExpenses(cloudData.expenses);
+        if (cloudData.preOrders) setPreOrders(cloudData.preOrders);
+        setIsFirebaseConnected(true);
         alert(
-          `Sukses Migrasi dari Excel & Google Sheets!\n` +
-          `• ${res.ordersCount} Riwayat Transaksi\n` +
-          `• ${res.productsCount} Produk Menu\n` +
-          `• ${res.categoriesCount} Kategori Menu\n\n` +
-          `Semua data telah tersimpan aman di Firebase Firestore.`
+          `Sukses Tarik Data dari Cloud!\n` +
+          `• ${cloudData.orders.length} Riwayat Transaksi\n` +
+          `• ${cloudData.products.length} Menu Produk\n` +
+          `• ${cloudData.categories.length} Kategori Menu\n\n` +
+          `Database Live dan Preview kini 100% sama dan sinkron.`
         );
       } else {
-        alert(`Gagal menarik data: ${res.message || "Terjadi kesalahan koneksi"}`);
+        alert("Gagal menarik data dari Cloud. Periksa koneksi internet.");
       }
     } catch (err: any) {
       alert(`Gagal menarik data: ${err.message || String(err)}`);
@@ -3076,8 +3163,8 @@ export default function App() {
                     queueSync("SETTINGS", "UPSERT", newVal);
                   }}
                   onTestPrint={handleTestPrintReceipt}
-                  onMigrateAllToFirebase={handleMigrateAllToFirebase}
-                  onImportFromSheets={handleImportFromSheets}
+                  onMigrateAllToFirebase={handleBackupAllToCloud}
+                  onImportFromSheets={handlePullAllFromCloud}
                   isMigrating={isMigrating}
                   isImportingSheets={isImportingSheets}
                   firebaseConnected={isFirebaseConnected}
@@ -3567,10 +3654,10 @@ export default function App() {
                 </div>
                 <div>
                   <h3 className="text-base font-black text-stone-900 leading-tight">
-                    Status Database Firebase
+                    Status Satu Cloud Database (Live & Preview)
                   </h3>
                   <p className="text-[11px] text-stone-500 font-medium">
-                    Google Cloud Firestore Real-time Backend
+                    Google Cloud Centralized Real-time Backend
                   </p>
                 </div>
               </div>
@@ -3628,7 +3715,7 @@ export default function App() {
                   </span>
                 </div>
                 <div className="pt-2 border-t border-stone-200/60 text-[11px] text-stone-600 leading-relaxed">
-                  ✓ Riwayat Order, Pengaturan Nota, Kustomisasi Menu & Add-ons, dan Pengeluaran telah tersimpan dan tersinkron otomatis penuh di database Firebase Firestore.
+                  ✓ Riwayat Order, Pengaturan Nota, Kustomisasi Menu & Add-ons, dan Pengeluaran tersinkronisasi dari satu database Cloud yang sama untuk aplikasi Live dan Preview.
                 </div>
               </div>
 

@@ -23,12 +23,19 @@ export default function ManagementPerformance({ orderHistory }: ManagementPerfor
       const oType = o.orderType || "Dine-in";
       orderTypeMap[oType] = (orderTypeMap[oType] || 0) + 1;
 
-      // Hour of day
+      // Hour of day (strictly in Asia/Jakarta WIB)
       try {
         const d = new Date(o.timestamp);
         if (!isNaN(d.getTime())) {
-          const h = d.getHours();
-          hourlyMap[h] = (hourlyMap[h] || 0) + 1;
+          const hourStr = new Intl.DateTimeFormat("en-US", {
+            timeZone: "Asia/Jakarta",
+            hour: "numeric",
+            hour12: false,
+          }).format(d);
+          const h = parseInt(hourStr, 10);
+          if (!isNaN(h)) {
+            hourlyMap[h] = (hourlyMap[h] || 0) + 1;
+          }
         }
       } catch {
         // ignore

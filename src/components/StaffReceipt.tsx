@@ -1,4 +1,5 @@
 import React from "react";
+import { formatWIBDate, formatWIBTime } from "../dateUtils";
 
 export interface StaffReceiptProps {
   order: {
@@ -34,15 +35,8 @@ export default function StaffReceipt({
     }));
   }
 
-  const formattedDate = new Date(order.timestamp).toLocaleDateString("id-ID", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-  const formattedTime = new Date(order.timestamp).toLocaleTimeString("id-ID", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const formattedDate = formatWIBDate(order.timestamp);
+  const formattedTime = formatWIBTime(order.timestamp);
 
   const isDineIn = (order.orderType || "").toLowerCase().includes("dine");
 

@@ -74,6 +74,7 @@ import {
   seedInitialFirestoreData,
   importFromGoogleSheetsToFirestore,
   testFirestoreConnection,
+  isQuotaError,
 } from "./firebase";
 import { QRCodeCanvas } from "qrcode.react";
 import { STORE_LOGO, STORE_LOGO_PRINT } from "./logo";
@@ -1993,24 +1994,13 @@ export default function App() {
   const [printStaffReceipt, setPrintStaffReceipt] = useLocalStorage<boolean>("legiy_print_staff_receipt", true);
   const [activePrintJob, setActivePrintJob] = useState<{ order: any; type: "NORMAL" | "STAFF" } | null>(null);
   const [printQueue, setPrintQueue] = useState<{ order: any; type: "NORMAL" | "STAFF" }[]>([]);
-  const [printStatusNotification, setPrintStatusNotification] = useState<string | null>(null);
-  const [receiptPreviewTab, setReceiptPreviewTab] = useState<"NORMAL" | "STAFF">("NORMAL");
-  const [isEditingReceipt, setIsEditingReceipt] = useState(false);
 
-  // Sequential Print Execution: triggers two separate window.print() dialogs when both receipts are requested,
+  // Sequential Print Execution: triggers separate window.print() dialogs when both receipts are requested,
   // allowing thermal printers to autocut the paper after each receipt!
   useEffect(() => {
     if (!activePrintJob) {
-      setPrintStatusNotification(null);
       return;
     }
-
-    const isStaff = activePrintJob.type === "STAFF";
-    const jobLabel = isStaff ? "Nota Staff / Dapur" : "Nota Normal Pelanggan";
-
-    setPrintStatusNotification(
-      `Membuka dialog printer: ${jobLabel}... Klik "Cetak" untuk memotong kertas.`
-    );
 
     let isDisposed = false;
 
@@ -2023,24 +2013,17 @@ export default function App() {
           const nextJob = currentQueue[0];
           const remaining = currentQueue.slice(1);
 
-          setPrintStatusNotification(
-            `Nota pertama selesai terpotong! Menyiapkan ${
-              nextJob.type === "STAFF" ? "Nota Staff / Dapur" : "Nota Normal"
-            }...`
-          );
-
           // Clear active job to cleanly unmount current receipt before mounting next
           setActivePrintJob(null);
 
-          // 600ms pause so browser and printer spooler cleanly close first dialog before opening next
+          // 500ms pause so browser and printer spooler cleanly close first dialog before opening next
           setTimeout(() => {
             setActivePrintJob(nextJob);
-          }, 600);
+          }, 500);
 
           return remaining;
         } else {
           setActivePrintJob(null);
-          setPrintStatusNotification(null);
           return [];
         }
       });
@@ -2048,7 +2031,7 @@ export default function App() {
 
     window.addEventListener("afterprint", handlePrintCompletion);
 
-    // Give DOM 450ms to mount and lay out the receipt element before triggering print dialog
+    // Give DOM 400ms to mount and lay out the receipt element before triggering print
     const printTimer = setTimeout(() => {
       try {
         window.print();
@@ -2056,7 +2039,7 @@ export default function App() {
         console.error("Print execution failed:", err);
         handlePrintCompletion();
       }
-    }, 450);
+    }, 400);
 
     return () => {
       isDisposed = true;
@@ -2121,29 +2104,60 @@ export default function App() {
 
     const unsubOrders = subscribeToOrders((items) => {
       if (!isMounted) return;
-      if (items && items.length > 0) {
-        setOrderHistory((prevOrders: any[]) => {
-          const cloudIds = new Set(items.map((it: any) => String(it.orderId || it.id)));
-          const pendingLocal = (Array.isArray(prevOrders) ? prevOrders : []).filter(
-            (localOrd: any) => localOrd?.orderId && !cloudIds.has(String(localOrd.orderId))
-          );
-          return [...pendingLocal, ...items];
-        });
-      }
+      setOrderHistory((prevOrders: any[]) => {
+        const cloudList = items || [];
+        const cloudIds = new Set(cloudList.map((it: any) => String(it.orderId || it.id)));
+        const pendingLocal = (Array.isArray(prevOrders) ? prevOrders : []).filter(
+          (localOrd: any) => localOrd?.orderId && !cloudIds.has(String(localOrd.orderId))
+        );
+
+        // Auto-sync local orders to Firestore so live app receives them
+        if (pendingLocal.length > 0) {
+          pendingLocal.forEach((ord) => {
+            syncOrderToFirestore("UPSERT", ord).catch(() => {});
+          });
+        }
+
+        return [...pendingLocal, ...cloudList];
+      });
     });
 
     const unsubExpenses = subscribeToExpenses((items) => {
       if (!isMounted) return;
-      if (items) {
-        setExpenses(items);
-      }
+      setExpenses((prevExpenses: any[]) => {
+        const cloudList = items || [];
+        const cloudIds = new Set(cloudList.map((it: any) => String(it.id)));
+        const pendingLocal = (Array.isArray(prevExpenses) ? prevExpenses : []).filter(
+          (localExp: any) => localExp?.id && !cloudIds.has(String(localExp.id))
+        );
+
+        if (pendingLocal.length > 0) {
+          pendingLocal.forEach((exp) => {
+            syncExpenseToFirestore("UPSERT", exp).catch(() => {});
+          });
+        }
+
+        return [...pendingLocal, ...cloudList];
+      });
     });
 
     const unsubPreOrders = subscribeToPreOrders((items) => {
       if (!isMounted) return;
-      if (items) {
-        setPreOrders(items);
-      }
+      setPreOrders((prevPreOrders: any[]) => {
+        const cloudList = items || [];
+        const cloudIds = new Set(cloudList.map((it: any) => String(it.id)));
+        const pendingLocal = (Array.isArray(prevPreOrders) ? prevPreOrders : []).filter(
+          (localPo: any) => localPo?.id && !cloudIds.has(String(localPo.id))
+        );
+
+        if (pendingLocal.length > 0) {
+          pendingLocal.forEach((po) => {
+            syncPreOrderToFirestore("UPSERT", po).catch(() => {});
+          });
+        }
+
+        return [...pendingLocal, ...cloudList];
+      });
     });
 
     const unsubSettings = subscribeToReceiptSettings((cloudSettings) => {
@@ -2196,9 +2210,14 @@ export default function App() {
       }
       setIsFirebaseConnected(true);
       setSyncStatus(null);
-    } catch (err) {
-      console.error("Firebase sync error:", err);
-      setSyncStatus("Offline saved");
+    } catch (err: any) {
+      if (isQuotaError(err)) {
+        console.warn("Firebase sync: Cloud quota reached, safely preserved in local storage.");
+        setSyncStatus("Tersimpan di perangkat (Kuota Cloud)");
+      } else {
+        console.warn("Firebase sync fallback:", err);
+        setSyncStatus("Offline saved");
+      }
       setTimeout(() => setSyncStatus(null), 3000);
     }
   };
@@ -2226,9 +2245,14 @@ export default function App() {
 
       setIsFirebaseConnected(true);
       alert("Sukses! Semua data produk, kategori, riwayat transaksi, pengeluaran, dan pre-order berhasil disinkronkan ke Firebase Firestore.");
-    } catch (err) {
-      console.error("Migration error:", err);
-      alert("Gagal memigrasikan sebagian data ke Firebase. Silakan periksa koneksi internet.");
+    } catch (err: any) {
+      if (isQuotaError(err)) {
+        console.warn("Migration warning: Quota reached. Local data is intact.");
+        alert("Kuota harian Firestore telah tercapai. Data Anda tetap tersimpan aman di penyimpanan lokal perangkat.");
+      } else {
+        console.warn("Migration error:", err);
+        alert("Gagal memigrasikan sebagian data ke Firebase. Silakan periksa koneksi internet.");
+      }
     } finally {
       setIsMigrating(false);
       setSyncStatus(null);
@@ -2436,10 +2460,14 @@ export default function App() {
     setLastOrderDetails(fullOrderDetails);
     setOrderHistory((prev) => [fullOrderDetails, ...prev]);
     setIsProcessing(false);
+    setIsCheckoutModalOpen(false);
     clearCart();
     setCashAmount("");
     setPaymentMethod("");
     setCustomerName("");
+
+    // Directly print receipt immediately (no in-app print dialog / confirmation prompt)
+    printReceipt(fullOrderDetails);
   };
 
   // Receipt Printing (Supports Normal Only, Staff Only, or Both with Autocut Separation)
@@ -3528,270 +3556,6 @@ export default function App() {
         </div>
       )}
 
-      {/* RECEIPT MODAL (AND PRINT VIEW) */}
-      {lastOrderDetails && (() => {
-        const modalItems = (Array.isArray(lastOrderDetails.cartSnapshot) && lastOrderDetails.cartSnapshot.length > 0)
-          ? lastOrderDetails.cartSnapshot
-          : (Array.isArray(lastOrderDetails.items) && lastOrderDetails.items.length > 0)
-            ? lastOrderDetails.items
-            : getCartSnapshotOrFallback(lastOrderDetails, productList);
-
-        return (
-        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:bg-white print:p-0">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col print:shadow-none print:w-full print:-mt-8 border-4 border-stone-900">
-            {/* Receipt Content */}
-            <div className="p-4 pb-3 max-h-[75vh] overflow-y-auto" id="receipt-content">
-              {isEditingReceipt ? (
-                <div className="space-y-3 text-left font-sans">
-                  <div className="flex items-center justify-between pb-2 border-b border-stone-200">
-                    <span className="text-xs font-black uppercase tracking-wider text-[#D81B60]">
-                      Kustomisasi Nota Sebelum Cetak
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingReceipt(false)}
-                      className="text-[10px] font-bold text-stone-500 hover:text-black"
-                    >
-                      Batal
-                    </button>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-black text-stone-800 block uppercase tracking-wider mb-1">
-                      Nama Customer / Meja
-                    </label>
-                    <input
-                      type="text"
-                      className="text-xs font-black text-black p-2 border-2 border-stone-900 rounded-xl w-full outline-none focus:border-[#D81B60]"
-                      value={lastOrderDetails.customerName || ""}
-                      onChange={(e) => setLastOrderDetails({ ...lastOrderDetails, customerName: e.target.value })}
-                      placeholder="Contoh: Amanda"
-                    />
-                  </div>
-
-                  {/* Gaya Frame Lucu */}
-                  <div>
-                    <label className="text-[10px] font-black text-stone-800 block uppercase tracking-wider mb-1">
-                      Pilih Gaya Frame Nota Lucu
-                    </label>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {CUTE_FRAME_PRESETS.map((p) => {
-                        const isSelected = (receiptSettings.frameStyle || "ribbon") === p.id;
-                        return (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => setReceiptSettings({ ...receiptSettings, frameStyle: p.id })}
-                            className={`p-2 rounded-xl text-left border-2 text-[11px] font-black flex items-center justify-between transition-all ${
-                              isSelected
-                                ? "border-[#D81B60] bg-pink-50 text-[#D81B60]"
-                                : "border-stone-200 bg-stone-50 text-stone-700 hover:bg-stone-100"
-                            }`}
-                          >
-                            <span className="flex items-center gap-1.5">
-                              <span className="font-mono text-[10px] bg-white border border-stone-300 px-1 py-0.5 rounded">{p.badge}</span>
-                              <span>{p.label.split(" ")[0]}</span>
-                            </span>
-                            {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-[#D81B60]" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Quotes Manis */}
-                  <div>
-                    <label className="text-[10px] font-black text-stone-800 block uppercase tracking-wider mb-1">
-                      Quotes Manis Bawah
-                    </label>
-                    <input
-                      type="text"
-                      className="text-xs font-bold text-black p-2 border-2 border-stone-900 rounded-xl w-full outline-none focus:border-[#D81B60]"
-                      value={receiptSettings.quotesBelow || ""}
-                      onChange={(e) => setReceiptSettings({ ...receiptSettings, quotesBelow: e.target.value })}
-                    />
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {DESSERT_QUOTES_PRESETS.slice(0, 3).map((q, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => setReceiptSettings({ ...receiptSettings, quotesBelow: q })}
-                          className="text-[9px] px-1.5 py-0.5 rounded bg-stone-100 hover:bg-pink-100 text-stone-700 font-bold"
-                        >
-                          Quote {idx + 1}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    <div>
-                      <label className="text-[9px] font-black text-stone-600 block uppercase tracking-wider">Nama Toko</label>
-                      <input
-                        type="text"
-                        className="text-xs font-bold text-black p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
-                        value={receiptSettings.storeName || ""}
-                        onChange={(e) => setReceiptSettings({ ...receiptSettings, storeName: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[9px] font-black text-stone-600 block uppercase tracking-wider">WhatsApp</label>
-                      <input
-                        type="text"
-                        className="text-xs font-bold text-black p-1.5 border-2 border-stone-900 rounded-lg w-full outline-none focus:border-[#D81B60]"
-                        value={receiptSettings.storePhone || ""}
-                        onChange={(e) => setReceiptSettings({ ...receiptSettings, storePhone: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="pt-2 border-t border-stone-200">
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingReceipt(false)}
-                      className="w-full py-2.5 bg-[#D81B60] text-white rounded-xl font-black text-xs hover:bg-[#C2185B] shadow-sm flex items-center justify-center gap-1.5"
-                    >
-                      <Sparkles size={14} />
-                      Simpan & Lihat Pratinjau Lucu
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {/* Receipt Preview Mode Switcher */}
-                  <div className="flex p-1 bg-stone-100 rounded-xl border border-stone-200 print:hidden">
-                    <button
-                      type="button"
-                      onClick={() => setReceiptPreviewTab("NORMAL")}
-                      className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
-                        receiptPreviewTab === "NORMAL"
-                          ? "bg-white text-stone-900 shadow-xs"
-                          : "text-stone-500 hover:text-stone-800"
-                      }`}
-                    >
-                      <Receipt size={13} />
-                      <span>Nota Normal</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setReceiptPreviewTab("STAFF")}
-                      className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
-                        receiptPreviewTab === "STAFF"
-                          ? "bg-white text-stone-900 shadow-xs"
-                          : "text-stone-500 hover:text-stone-800"
-                      }`}
-                    >
-                      <ChefHat size={13} className="text-amber-600" />
-                      <span>Nota Staff (Dapur)</span>
-                    </button>
-                  </div>
-
-                  {receiptPreviewTab === "STAFF" ? (
-                    <div>
-                      <div className="text-[10px] text-stone-500 font-bold mb-1.5 text-center bg-amber-50 p-1.5 rounded-lg border border-amber-200 text-amber-900">
-                        ⚡ Format Khusus Dapur: Super hemat kertas, hanya nama customer, no. order, waktu & detail pesanan tanpa harga.
-                      </div>
-                      <StaffReceipt
-                        order={lastOrderDetails}
-                        isPrint={false}
-                        className="w-full border-2 border-stone-900 shadow-none rounded-2xl"
-                      />
-                    </div>
-                  ) : (
-                    <CuteReceipt
-                      order={lastOrderDetails}
-                      settings={receiptSettings}
-                      isPrint={false}
-                      className="w-full border-2 border-stone-900 shadow-none rounded-2xl"
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div className="p-4 bg-stone-100 border-t-2 border-stone-900 flex flex-col gap-2.5 print:hidden">
-              {/* Staff Receipt Toggle Box inside Checkout Modal */}
-              <div className="bg-white p-2.5 rounded-xl border border-stone-300 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
-                    printStaffReceipt ? "bg-emerald-100 text-emerald-800" : "bg-stone-100 text-stone-400"
-                  }`}>
-                    <ChefHat size={16} />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-xs font-black text-stone-900 leading-tight">
-                      Cetak Nota Staff (Dapur)
-                    </p>
-                    <p className="text-[10px] text-stone-500">
-                      {printStaffReceipt ? "Autocut memotong kedua nota terpisah" : "Hanya cetak nota normal"}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPrintStaffReceipt(!printStaffReceipt)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
-                    printStaffReceipt
-                      ? "bg-emerald-600 text-white shadow-xs"
-                      : "bg-stone-200 text-stone-600 hover:bg-stone-300"
-                  }`}
-                >
-                  {printStaffReceipt ? "AKTIF (2x)" : "NONAKTIF"}
-                </button>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setIsEditingReceipt(!isEditingReceipt)}
-                  className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs flex justify-center items-center transition-all border ${isEditingReceipt ? "bg-stone-900 text-white border-transparent" : "bg-white text-stone-800 border-stone-300 hover:bg-stone-50 shadow-xs"}`}
-                >
-                  <Settings size={13} className="mr-1.5" />
-                  {isEditingReceipt ? "Simpan Struk" : "Kustom Teks Struk"}
-                </button>
-
-                <button
-                  onClick={() => printReceipt(undefined, { mode: "STAFF_ONLY" })}
-                  className="py-2 px-3 rounded-xl font-bold bg-white text-stone-800 border border-stone-300 hover:bg-stone-50 text-xs flex justify-center items-center gap-1 shadow-xs"
-                  title="Cetak hanya nota ringkas untuk staff/dapur"
-                >
-                  <ChefHat size={13} className="text-amber-600" />
-                  Staff Saja
-                </button>
-              </div>
-
-              <div className="flex gap-2 w-full">
-                <button
-                  onClick={() => {
-                    setLastOrderDetails(null);
-                    setIsCheckoutModalOpen(false);
-                    setIsEditingReceipt(false);
-                  }}
-                  className="w-28 py-3 px-3 rounded-xl font-black text-stone-700 bg-white border border-stone-300 hover:bg-stone-50 shadow-xs text-center text-xs transition-colors"
-                >
-                  Selesai
-                </button>
-                <button
-                  onClick={() => printReceipt()}
-                  className="flex-1 py-3 px-3 rounded-xl font-black bg-stone-950 text-white hover:bg-black active:scale-95 shadow-lg flex flex-col justify-center items-center text-xs transition-all border border-black"
-                >
-                  <span className="flex items-center gap-1.5">
-                    <Printer size={14} />
-                    {printStaffReceipt ? "Cetak 2 Nota (Normal + Staff)" : "Cetak Nota Normal (80mm)"}
-                  </span>
-                  {printStaffReceipt && (
-                    <span className="text-[9.5px] text-stone-300 font-normal">
-                      2 dialog cetak terpisah untuk autocut
-                    </span>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-        );
-      })()}
-
       {/* Firebase Database Status & Connection Modal */}
       {isDbStatusModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
@@ -3974,26 +3738,6 @@ export default function App() {
           }
         }
       `}</style>
-
-      {/* Floating Printing Status Notification Banner during Multi-Job Autocut Print */}
-      {printStatusNotification && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[10000] bg-stone-950 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-stone-700 animate-in fade-in slide-in-from-top-3 print:hidden max-w-md w-[92%]">
-          <Printer className="w-5 h-5 text-rose-400 shrink-0 animate-pulse" />
-          <div className="flex-1 text-xs font-bold leading-snug">
-            {printStatusNotification}
-          </div>
-          <button
-            onClick={() => {
-              setActivePrintJob(null);
-              setPrintQueue([]);
-              setPrintStatusNotification(null);
-            }}
-            className="text-[10.5px] bg-stone-800 hover:bg-stone-700 px-2.5 py-1 rounded-lg text-stone-300 font-bold shrink-0 transition-colors"
-          >
-            Tutup
-          </button>
-        </div>
-      )}
 
       {/* PRINTABLE RECEIPT TEMPLATE FOR 80MM (HIDDEN ON SCREEN, SHOWN ONLY ON PRINT) */}
       {activePrintJob && (

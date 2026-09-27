@@ -12,8 +12,6 @@ import {
   ChevronUp,
   Receipt,
   Eye,
-  CheckSquare,
-  Square,
   FileText,
   Clock,
   Sparkles,
@@ -176,11 +174,11 @@ export default function ManagementHistory({
   setOrderHistory,
   queueSync,
   productList = [],
+  printStaffReceipt = true,
 }: ManagementHistoryProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterPeriod, setFilterPeriod] = useState<string>("ALL");
   const [filterPayment, setFilterPayment] = useState<string>("ALL");
-  const [filterProcessStatus, setFilterProcessStatus] = useState<string>("ALL");
   const [sortBy, setSortBy] = useState<string>("NEWEST");
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [copiedOrderId, setCopiedOrderId] = useState<string | null>(null);
@@ -192,22 +190,6 @@ export default function ManagementHistory({
       ...prev,
       [orderId]: !prev[orderId],
     }));
-  };
-
-  // Toggle order status between PROSES and SELESAI (default: PROSES)
-  const toggleOrderStatus = (order: any, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    const isCurrentlySelesai = order.orderStatus === "Selesai";
-    const newStatus = isCurrentlySelesai ? "Proses" : "Selesai";
-    const updatedOrder = { ...order, orderStatus: newStatus };
-
-    setOrderHistory((prev: any[]) =>
-      prev.map((o) => (o.orderId === order.orderId ? updatedOrder : o))
-    );
-
-    if (queueSync) {
-      queueSync("ORDER", "UPSERT", updatedOrder);
-    }
   };
 
   // Filter & sort orders
@@ -230,11 +212,6 @@ export default function ManagementHistory({
       if (filterPayment !== "ALL" && order.paymentMethod !== filterPayment) {
         return false;
       }
-
-      // Process Status Filter (default is Proses)
-      const isSelesai = order.orderStatus === "Selesai";
-      const status = isSelesai ? "Selesai" : "Proses";
-      if (filterProcessStatus !== "ALL" && status !== filterProcessStatus) return false;
 
       // Search Filter
       if (searchQuery.trim()) {
@@ -290,7 +267,6 @@ export default function ManagementHistory({
     orderHistory,
     filterPeriod,
     filterPayment,
-    filterProcessStatus,
     searchQuery,
     sortBy,
     productList,
@@ -398,7 +374,7 @@ export default function ManagementHistory({
 
       {/* 2. FILTER BAR */}
       <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200/90 shadow-2xs w-full">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
           {/* PERIODE */}
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-black text-slate-400 tracking-wider uppercase">
@@ -413,22 +389,6 @@ export default function ManagementHistory({
               <option value="TODAY">Hari Ini</option>
               <option value="7DAYS">7 Hari Terakhir</option>
               <option value="MONTH">Bulan Ini</option>
-            </select>
-          </div>
-
-          {/* STATUS PESANAN */}
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-black text-slate-400 tracking-wider uppercase">
-              STATUS PESANAN
-            </label>
-            <select
-              value={filterProcessStatus}
-              onChange={(e) => setFilterProcessStatus(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-[#D81B60] transition-all cursor-pointer"
-            >
-              <option value="ALL">Semua Status</option>
-              <option value="Proses">Proses (Belum Selesai)</option>
-              <option value="Selesai">Selesai</option>
             </select>
           </div>
 
@@ -513,15 +473,13 @@ export default function ManagementHistory({
             </p>
             {(searchQuery ||
               filterPeriod !== "ALL" ||
-              filterPayment !== "ALL" ||
-              filterProcessStatus !== "ALL") && (
+              filterPayment !== "ALL") && (
               <button
                 type="button"
                 onClick={() => {
                   setSearchQuery("");
                   setFilterPeriod("ALL");
                   setFilterPayment("ALL");
-                  setFilterProcessStatus("ALL");
                 }}
                 className="mt-4 px-4 py-2 bg-[#D81B60] text-white text-xs font-bold rounded-xl hover:bg-[#C2185B] transition-all"
               >
@@ -537,9 +495,6 @@ export default function ManagementHistory({
               const displayTotal =
                 typeof order.total === "number" ? order.total : parseFloat(order.total) || 0;
               const orderDate = order.timestamp ? new Date(order.timestamp) : new Date();
-
-              // Process Status (default: PROSES)
-              const isSelesai = order.orderStatus === "Selesai";
 
               // Summary text of items
               const summaryText = items
@@ -655,46 +610,63 @@ export default function ManagementHistory({
                         </div>
                       )}
                     </div>
-
-                    {/* STATUS CHECKBOX (SELESAI / PROSES - default PROSES) */}
-                    <div
-                      onClick={(e) => toggleOrderStatus(order, e)}
-                      className={`cursor-pointer select-none rounded-xl border px-3 py-2 flex items-center justify-between transition-all ${
-                        isSelesai
-                          ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-                          : "border-amber-200 bg-amber-50/70 text-amber-800 hover:border-amber-300"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        {isSelesai ? (
-                          <CheckSquare size={16} className="text-emerald-600 shrink-0" />
-                        ) : (
-                          <Square size={16} className="text-amber-500 shrink-0" />
-                        )}
-                        <span className="text-xs font-black tracking-wide uppercase">
-                          {isSelesai ? "SELESAI" : "PROSES"}
-                        </span>
-                      </div>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                          isSelesai
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-amber-100 text-amber-800"
-                        }`}
-                      >
-                        {isSelesai ? "Selesai" : "Diproses"}
-                      </span>
-                    </div>
                   </div>
 
-                  {/* BOTTOM SECTION: Grand Total (Action buttons removed as requested) */}
-                  <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3 flex items-center justify-between">
-                    <span className="text-[10px] font-black text-slate-400 tracking-wider uppercase">
-                      GRAND TOTAL
-                    </span>
-                    <span className="text-base font-mono font-black text-slate-900">
-                      {formatRupiah(displayTotal)}
-                    </span>
+                  {/* BOTTOM SECTION: Grand Total & Direct Print Action Buttons */}
+                  <div className="border-t border-slate-100 bg-slate-50/60 px-4 pt-3 pb-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black text-slate-400 tracking-wider uppercase">
+                        GRAND TOTAL
+                      </span>
+                      <span className="text-base font-mono font-black text-slate-900">
+                        {formatRupiah(displayTotal)}
+                      </span>
+                    </div>
+
+                    {/* DIRECT PRINT BUTTONS ON EVERY ORDER */}
+                    <div className="flex items-center gap-1.5 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (printReceipt) {
+                            printReceipt(order);
+                          }
+                        }}
+                        className="flex-1 py-2 px-3 bg-stone-900 hover:bg-black active:scale-95 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                        title={printStaffReceipt ? "Cetak Nota Normal & Nota Staff (2x Print Autocut)" : "Cetak Nota Struk (80mm)"}
+                      >
+                        <Printer size={14} className="text-rose-400" />
+                        <span>Cetak Nota</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (printReceipt) {
+                            printReceipt(order, { mode: "STAFF_ONLY" });
+                          }
+                        }}
+                        className="py-2 px-2.5 bg-amber-50 hover:bg-amber-100 active:scale-95 border border-amber-300 text-amber-900 font-bold text-xs rounded-xl flex items-center justify-center gap-1 shadow-xs transition-all cursor-pointer"
+                        title="Cetak khusus Nota Staff / Dapur (Super Hemat Kertas)"
+                      >
+                        <ChefHat size={14} className="text-amber-600" />
+                        <span className="text-[11px]">Staff</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setModalOrder(order);
+                        }}
+                        className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 border border-slate-200 bg-white rounded-xl transition-all cursor-pointer"
+                        title="Lihat Detail Pesanan"
+                      >
+                        <Eye size={14} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               );

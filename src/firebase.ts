@@ -29,12 +29,27 @@ export const db = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestore
 // Initialize Firebase Auth
 export const auth = getAuth(app);
 
+// Helper to detect Firestore quota limits and resource exhaustion
+export function isQuotaError(error: any): boolean {
+  if (!error) return false;
+  const msg = String(error?.message || error || "").toLowerCase();
+  const code = String(error?.code || "").toLowerCase();
+  return (
+    code === "resource-exhausted" ||
+    msg.includes("quota exceeded") ||
+    msg.includes("resource-exhausted") ||
+    msg.includes("quota")
+  );
+}
+
 // Test connection on boot as mandated by skill
 async function testConnection() {
   try {
     await getDocFromServer(doc(db, "test", "connection"));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("the client is offline")) {
+  } catch (error: any) {
+    if (isQuotaError(error)) {
+      console.warn("Firestore daily quota limit reached on boot test. Running in local-first cache mode.");
+    } else if (error instanceof Error && error.message.includes("the client is offline")) {
       console.warn("Please check your Firebase configuration or network connection.");
     }
   }
@@ -64,7 +79,17 @@ export async function testFirestoreConnection(): Promise<{
     };
   } catch (error: any) {
     const latency = Math.round(performance.now() - start);
-    console.error("Test Firestore connection error:", error);
+    if (isQuotaError(error)) {
+      console.warn("Test Firestore connection: Quota exceeded, local storage active.");
+      return {
+        connected: true, // App operates normally in local-first mode
+        message: "Kuota harian Cloud Firestore tercapai. Mode offline/lokal aktif.",
+        projectId: firebaseConfig.projectId,
+        databaseId: firebaseConfig.firestoreDatabaseId || "(default)",
+        latencyMs: latency,
+      };
+    }
+    console.warn("Test Firestore connection error:", error);
     return {
       connected: false,
       message: error?.message || "Gagal menghubungi server Firestore",
@@ -88,233 +113,354 @@ onAuthStateChanged(auth, (user) => {
 
 // Real-time subscribers with Quota Optimization (limit and efficient queries)
 export function subscribeToProducts(onData: (products: Product[]) => void) {
-  const q = query(collection(db, "products"), limit(300));
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const items: Product[] = [];
-      snapshot.forEach((docSnap) => {
-        const d = docSnap.data();
-        items.push({
-          id: docSnap.id,
-          name: d.name || "",
-          price: Number(d.price) || 0,
-          cogs: Number(d.cogs) || 0,
-          category: d.category || "General",
-          imageColor: d.imageColor || "bg-pink-100 text-pink-800",
-          addons: d.addons || undefined,
+  try {
+    const q = query(collection(db, "products"), limit(300));
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const items: Product[] = [];
+        snapshot.forEach((docSnap) => {
+          const d = docSnap.data();
+          items.push({
+            id: docSnap.id,
+            name: d.name || "",
+            price: Number(d.price) || 0,
+            cogs: Number(d.cogs) || 0,
+            category: d.category || "General",
+            imageColor: d.imageColor || "bg-pink-100 text-pink-800",
+            addons: d.addons || undefined,
+          });
         });
-      });
-      onData(items);
-    },
-    (error) => {
-      console.error("Firestore products subscribe error:", error);
-    }
-  );
+        onData(items);
+      },
+      (error) => {
+        if (isQuotaError(error)) {
+          console.warn("Firestore products subscribe: Quota exceeded, using local cached catalog.");
+        } else {
+          console.warn("Firestore products subscribe warning:", error);
+        }
+      }
+    );
+  } catch (err) {
+    console.warn("Firestore products query setup warning:", err);
+    return () => {};
+  }
 }
 
 export function subscribeToCategories(onData: (categories: string[]) => void) {
-  const q = query(collection(db, "categories"), limit(100));
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const items: string[] = [];
-      snapshot.forEach((docSnap) => {
-        const d = docSnap.data();
-        if (d.name) items.push(d.name);
-      });
-      onData(items);
-    },
-    (error) => {
-      console.error("Firestore categories subscribe error:", error);
-    }
-  );
+  try {
+    const q = query(collection(db, "categories"), limit(100));
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const items: string[] = [];
+        snapshot.forEach((docSnap) => {
+          const d = docSnap.data();
+          if (d.name) items.push(d.name);
+        });
+        onData(items);
+      },
+      (error) => {
+        if (isQuotaError(error)) {
+          console.warn("Firestore categories subscribe: Quota exceeded, using local categories.");
+        } else {
+          console.warn("Firestore categories subscribe warning:", error);
+        }
+      }
+    );
+  } catch (err) {
+    console.warn("Firestore categories query setup warning:", err);
+    return () => {};
+  }
 }
 
 // Quota-optimized orders listener: loads complete order history without artificial truncation
 export function subscribeToOrders(onData: (orders: any[]) => void, maxLimit = 5000) {
-  const q = query(collection(db, "orders"), orderBy("timestamp", "desc"), limit(maxLimit));
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const items: any[] = [];
-      snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        items.push({
-          ...data,
-          orderId: data.orderId || docSnap.id,
-        });
-      });
-      onData(items);
-    },
-    (error) => {
-      console.warn("Firestore orders subscribe orderBy error (falling back to limited query):", error);
-      // Fallback query without orderBy index
-      const fallbackQ = query(collection(db, "orders"), limit(maxLimit));
-      return onSnapshot(
-        fallbackQ,
-        (snap) => {
-          const items: any[] = [];
-          snap.forEach((docSnap) => {
-            const data = docSnap.data();
-            items.push({
-              ...data,
-              orderId: data.orderId || docSnap.id,
-            });
+  try {
+    const q = query(collection(db, "orders"), orderBy("timestamp", "desc"), limit(maxLimit));
+    let fallbackUnsub: (() => void) | null = null;
+
+    const unsub = onSnapshot(
+      q,
+      (snapshot) => {
+        const items: any[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          items.push({
+            ...data,
+            orderId: data.orderId || docSnap.id,
           });
-          items.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
-          onData(items);
-        },
-        (fallbackErr) => {
-          console.error("Firestore orders fallback subscription error:", fallbackErr);
+        });
+        onData(items);
+      },
+      (error: any) => {
+        if (isQuotaError(error)) {
+          console.warn("Firestore orders subscribe: Quota exceeded, operating with local order history.");
+          return;
         }
-      );
-    }
-  );
+        // Only attempt fallback query if index was missing
+        if (error?.code === "failed-precondition") {
+          console.warn("Firestore orders subscribe orderBy error (falling back to limited query):", error);
+          try {
+            const fallbackQ = query(collection(db, "orders"), limit(maxLimit));
+            fallbackUnsub = onSnapshot(
+              fallbackQ,
+              (snap) => {
+                const items: any[] = [];
+                snap.forEach((docSnap) => {
+                  const data = docSnap.data();
+                  items.push({
+                    ...data,
+                    orderId: data.orderId || docSnap.id,
+                  });
+                });
+                items.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+                onData(items);
+              },
+              (fallbackErr) => {
+                if (isQuotaError(fallbackErr)) {
+                  console.warn("Firestore orders fallback subscribe: Quota exceeded, using local order history.");
+                } else {
+                  console.warn("Firestore orders fallback subscription warning:", fallbackErr);
+                }
+              }
+            );
+          } catch (e) {
+            console.warn("Firestore orders fallback setup warning:", e);
+          }
+        } else {
+          console.warn("Firestore orders subscribe warning:", error);
+        }
+      }
+    );
+
+    return () => {
+      unsub();
+      if (fallbackUnsub) fallbackUnsub();
+    };
+  } catch (err) {
+    console.warn("Firestore orders query setup warning:", err);
+    return () => {};
+  }
 }
 
 // Quota-optimized expenses listener (up to 500 records)
 export function subscribeToExpenses(onData: (expenses: any[]) => void, maxLimit = 500) {
-  const q = query(collection(db, "expenses"), limit(maxLimit));
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const items: any[] = [];
-      snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        items.push({
-          ...data,
-          id: docSnap.id,
+  try {
+    const q = query(collection(db, "expenses"), limit(maxLimit));
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const items: any[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          items.push({
+            ...data,
+            id: docSnap.id,
+          });
         });
-      });
-      items.sort((a, b) => new Date(b.timestamp || b.date || 0).getTime() - new Date(a.timestamp || a.date || 0).getTime());
-      onData(items);
-    },
-    (error) => {
-      console.error("Firestore expenses subscribe error:", error);
-    }
-  );
+        items.sort((a, b) => new Date(b.timestamp || b.date || 0).getTime() - new Date(a.timestamp || a.date || 0).getTime());
+        onData(items);
+      },
+      (error) => {
+        if (isQuotaError(error)) {
+          console.warn("Firestore expenses subscribe: Quota exceeded, using local expenses.");
+        } else {
+          console.warn("Firestore expenses subscribe warning:", error);
+        }
+      }
+    );
+  } catch (err) {
+    console.warn("Firestore expenses query setup warning:", err);
+    return () => {};
+  }
 }
 
 // Quota-optimized pre-orders listener (up to 500 records)
 export function subscribeToPreOrders(onData: (preOrders: any[]) => void, maxLimit = 500) {
-  const q = query(collection(db, "preOrders"), limit(maxLimit));
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const items: any[] = [];
-      snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        items.push({
-          ...data,
-          id: docSnap.id,
+  try {
+    const q = query(collection(db, "preOrders"), limit(maxLimit));
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const items: any[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          items.push({
+            ...data,
+            id: docSnap.id,
+          });
         });
-      });
-      items.sort((a, b) => new Date(b.pickupDate || 0).getTime() - new Date(a.pickupDate || 0).getTime());
-      onData(items);
-    },
-    (error) => {
-      console.error("Firestore preOrders subscribe error:", error);
-    }
-  );
+        items.sort((a, b) => new Date(b.pickupDate || 0).getTime() - new Date(a.pickupDate || 0).getTime());
+        onData(items);
+      },
+      (error) => {
+        if (isQuotaError(error)) {
+          console.warn("Firestore preOrders subscribe: Quota exceeded, using local pre-orders.");
+        } else {
+          console.warn("Firestore preOrders subscribe warning:", error);
+        }
+      }
+    );
+  } catch (err) {
+    console.warn("Firestore preOrders query setup warning:", err);
+    return () => {};
+  }
 }
 
 export function subscribeToReceiptSettings(onData: (settings: any) => void) {
-  const settingsDocRef = doc(db, "settings", "receipt");
-  return onSnapshot(
-    settingsDocRef,
-    (docSnap) => {
-      if (docSnap.exists()) {
-        onData(docSnap.data());
+  try {
+    const settingsDocRef = doc(db, "settings", "receipt");
+    return onSnapshot(
+      settingsDocRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          onData(docSnap.data());
+        }
+      },
+      (error) => {
+        if (isQuotaError(error)) {
+          console.warn("Firestore settings subscribe: Quota exceeded, using local receipt settings.");
+        } else {
+          console.warn("Firestore settings subscribe warning:", error);
+        }
       }
-    },
-    (error) => {
-      console.error("Firestore settings subscribe error:", error);
-    }
-  );
+    );
+  } catch (err) {
+    console.warn("Firestore settings query setup warning:", err);
+    return () => {};
+  }
 }
 
-// Write / Mutate operations
+// Write / Mutate operations with Quota Graceful Fallback
 export async function syncProductToFirestore(action: "UPSERT" | "DELETE", product: any) {
-  const docId = String(product.id || product.name);
-  const ref = doc(db, "products", docId);
-  if (action === "DELETE") {
-    await deleteDoc(ref);
-  } else {
-    await setDoc(ref, {
-      id: docId,
-      name: product.name,
-      price: Number(product.price) || 0,
-      cogs: Number(product.cogs) || 0,
-      category: product.category || "General",
-      imageColor: product.imageColor || "bg-pink-100 text-pink-800",
-      addons: product.addons || null,
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
+  try {
+    const docId = String(product.id || product.name);
+    const ref = doc(db, "products", docId);
+    if (action === "DELETE") {
+      await deleteDoc(ref);
+    } else {
+      await setDoc(ref, {
+        id: docId,
+        name: product.name,
+        price: Number(product.price) || 0,
+        cogs: Number(product.cogs) || 0,
+        category: product.category || "General",
+        imageColor: product.imageColor || "bg-pink-100 text-pink-800",
+        addons: product.addons || null,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    }
+  } catch (err: any) {
+    if (isQuotaError(err)) {
+      console.warn("Firestore syncProduct: Quota reached. Saved locally in browser.");
+      return;
+    }
+    throw err;
   }
 }
 
 export async function syncCategoryToFirestore(action: "UPSERT" | "DELETE", category: { name: string }) {
-  const safeId = category.name.trim().toLowerCase().replace(/[^a-z0-9]/g, "_");
-  const ref = doc(db, "categories", safeId);
-  if (action === "DELETE") {
-    await deleteDoc(ref);
-  } else {
-    await setDoc(ref, {
-      name: category.name,
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
+  try {
+    const safeId = category.name.trim().toLowerCase().replace(/[^a-z0-9]/g, "_");
+    const ref = doc(db, "categories", safeId);
+    if (action === "DELETE") {
+      await deleteDoc(ref);
+    } else {
+      await setDoc(ref, {
+        name: category.name,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    }
+  } catch (err: any) {
+    if (isQuotaError(err)) {
+      console.warn("Firestore syncCategory: Quota reached. Saved locally in browser.");
+      return;
+    }
+    throw err;
   }
 }
 
 export async function syncOrderToFirestore(action: "UPSERT" | "DELETE", order: any) {
-  const docId = String(order.orderId);
-  const ref = doc(db, "orders", docId);
-  if (action === "DELETE") {
-    await deleteDoc(ref);
-  } else {
-    await setDoc(ref, {
-      ...order,
-      orderId: docId,
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
+  try {
+    const docId = String(order.orderId);
+    const ref = doc(db, "orders", docId);
+    if (action === "DELETE") {
+      await deleteDoc(ref);
+    } else {
+      await setDoc(ref, {
+        ...order,
+        orderId: docId,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    }
+  } catch (err: any) {
+    if (isQuotaError(err)) {
+      console.warn("Firestore syncOrder: Quota reached. Order saved locally in browser.");
+      return;
+    }
+    throw err;
   }
 }
 
 export async function syncExpenseToFirestore(action: "UPSERT" | "DELETE", expense: any) {
-  const docId = String(expense.id);
-  const ref = doc(db, "expenses", docId);
-  if (action === "DELETE") {
-    await deleteDoc(ref);
-  } else {
-    await setDoc(ref, {
-      ...expense,
-      id: docId,
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
+  try {
+    const docId = String(expense.id);
+    const ref = doc(db, "expenses", docId);
+    if (action === "DELETE") {
+      await deleteDoc(ref);
+    } else {
+      await setDoc(ref, {
+        ...expense,
+        id: docId,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    }
+  } catch (err: any) {
+    if (isQuotaError(err)) {
+      console.warn("Firestore syncExpense: Quota reached. Saved locally in browser.");
+      return;
+    }
+    throw err;
   }
 }
 
 export async function syncPreOrderToFirestore(action: "UPSERT" | "DELETE", preOrder: any) {
-  const docId = String(preOrder.id);
-  const ref = doc(db, "preOrders", docId);
-  if (action === "DELETE") {
-    await deleteDoc(ref);
-  } else {
-    await setDoc(ref, {
-      ...preOrder,
-      id: docId,
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
+  try {
+    const docId = String(preOrder.id);
+    const ref = doc(db, "preOrders", docId);
+    if (action === "DELETE") {
+      await deleteDoc(ref);
+    } else {
+      await setDoc(ref, {
+        ...preOrder,
+        id: docId,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    }
+  } catch (err: any) {
+    if (isQuotaError(err)) {
+      console.warn("Firestore syncPreOrder: Quota reached. Saved locally in browser.");
+      return;
+    }
+    throw err;
   }
 }
 
 export async function syncReceiptSettingsToFirestore(settings: any) {
-  const ref = doc(db, "settings", "receipt");
-  await setDoc(ref, {
-    ...settings,
-    updatedAt: new Date().toISOString(),
-  }, { merge: true });
+  try {
+    const ref = doc(db, "settings", "receipt");
+    await setDoc(ref, {
+      ...settings,
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+  } catch (err: any) {
+    if (isQuotaError(err)) {
+      console.warn("Firestore syncReceiptSettings: Quota reached. Saved locally in browser.");
+      return;
+    }
+    throw err;
+  }
 }
 
 // Initial seed helper: if products collection in Firestore is empty, seed defaults
@@ -361,6 +507,13 @@ export async function seedInitialFirestoreData(
     }
     return false;
   } catch (error) {
+    if (isQuotaError(error)) {
+      console.warn("Firestore seed check: Quota exceeded, operating with local defaults.");
+      if (typeof window !== "undefined") {
+        localStorage.setItem("legiy_firestore_seeded_v1", "true");
+      }
+      return false;
+    }
     console.warn("Seeding initial data to Firestore encountered an issue:", error);
     return false;
   }

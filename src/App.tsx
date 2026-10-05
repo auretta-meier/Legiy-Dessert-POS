@@ -2475,6 +2475,8 @@ export default function App() {
     const currentTotal = Math.round(Math.max(0, subtotal - discount) + tax);
     setPaymentMethod("Cash");
     setCashAmount(currentTotal > 0 ? currentTotal.toLocaleString("id-ID") : "");
+    setIsProcessing(false);
+    setLastOrderDetails(null);
     setIsCheckoutModalOpen(true);
     setIsMobileCartOpen(false);
   };
@@ -3208,13 +3210,22 @@ export default function App() {
               <div className="text-base font-black text-white font-mono leading-tight">{formatRupiah(total)}</div>
             </div>
           </div>
-          <button
-            onClick={() => setIsMobileCartOpen(true)}
-            className="bg-[#D45D79] hover:bg-[#C44D69] text-white px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs active:scale-95 transition-all"
-          >
-            <ShoppingBag size={15} />
-            <span>Lihat Keranjang</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsMobileCartOpen(true)}
+              className="bg-stone-800 hover:bg-stone-700 text-stone-200 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-stone-700 active:scale-95 transition-all"
+            >
+              <ShoppingBag size={14} />
+              <span>Detail</span>
+            </button>
+            <button
+              onClick={openCheckoutModal}
+              className="bg-[#D81B60] hover:bg-[#C2185B] text-white px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-xs active:scale-95 transition-all"
+            >
+              <span>Bayar</span>
+              <ChevronRight size={14} strokeWidth={2.5} />
+            </button>
+          </div>
         </div>
       )}
 
@@ -3421,8 +3432,8 @@ export default function App() {
       )}
 
       {/* CHECKOUT MODAL */}
-      {isCheckoutModalOpen && !lastOrderDetails && (
-        <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 print:hidden">
+      {isCheckoutModalOpen && (
+        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-xs z-[70] flex items-center justify-center p-3 sm:p-4 print:hidden animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] border border-stone-200">
             <div className="p-4 sm:p-5 border-b border-stone-100 bg-stone-50/60 flex justify-between items-center">
               <div>
